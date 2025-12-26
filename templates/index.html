@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Gem5 Pro Viewer</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --header-bg: #252526;
+            --sidebar-bg: #252526;
+            --text-color: #cccccc;
+            --accent-color: #007acc;
+            --border-color: #3e3e42;
+        }
+
+        body { 
+            font-family: 'Segoe UI', 'Consolas', monospace; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            background-color: var(--bg-color); 
+            color: var(--text-color);
+            overflow: hidden; 
+            user-select: none; 
+        }
+        
+        /* 顶部工具栏 */
+        .toolbar { 
+            height: 40px;
+            padding: 0 16px; 
+            background: var(--header-bg); 
+            border-bottom: 1px solid var(--border-color); 
+            display: flex; 
+            gap: 16px; 
+            align-items: center; 
+            flex-shrink: 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .brand { font-weight: 600; font-size: 14px; color: #fff; margin-right: 10px; }
+
+        .btn {
+            background: #3c3c3c;
+            border: 1px solid transparent;
+            color: #fff;
+            padding: 4px 12px;
+            font-size: 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex; align-items: center;
+        }
+        .btn:hover { background: #505050; }
+        .btn-primary { background: var(--accent-color); }
+        .btn-primary:hover { background: #0062a3; }
+        
+        input[type="file"] { display: none; } 
+
+        .input-group { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        input[type="number"] { 
+            width: 50px; 
+            background: #3c3c3c; 
+            border: 1px solid #555; 
+            color: #fff; 
+            padding: 3px; 
+            border-radius: 2px;
+        }
+
+        .status { font-size: 11px; margin-left: auto; color: #888; }
+        .help-tip { font-size: 11px; color: #666; margin-left: 10px; }
+
+        /* Canvas 容器 */
+        #canvas-wrapper { 
+            flex: 1; 
+            position: relative; 
+            overflow: hidden; 
+            background-color: var(--bg-color);
+            cursor: default;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* 悬浮 Tooltip */
+        #tooltip {
+            position: fixed;
+            display: none;
+            background: #2d2d30;
+            border: 1px solid #454545;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #eee;
+            z-index: 1000;
+            pointer-events: none; 
+            min-width: 200px;
+        }
+        #tooltip h4 { margin: 0 0 6px 0; color: #fff; font-size: 13px; border-bottom: 1px solid #444; padding-bottom: 4px; }
+        #tooltip .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        #tooltip .key { color: #888; }
+        #tooltip .val { font-family: 'Consolas', monospace; color: #4fc1ff; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <span class="brand">GEM5 VIEWER</span>
+        
+        <label class="btn btn-primary">
+            Open Trace
+            <input type="file" id="fileInput" accept=".out,.txt" onchange="loadData()">
+        </label>
+        
+        <div style="width:1px; height:20px; background:#444;"></div>
+
+        <div class="input-group" title="Gem5 Ticks per Cycle">
+            <span>Ticks/Cycle:</span>
+            <input type="number" id="cycleTicks" value="500" step="100">
+        </div>
+
+        <span class="help-tip">(Ctrl+Wheel to Zoom X)</span>
+        
+        <span id="status" class="status">Ready</span>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="mainCanvas"></canvas>
+        <div id="tooltip"></div>
+    </div>
+
+<script>
+    // --- 配置 ---
+    const CONFIG = {
+        defaultScaleX: 0.05, // 修改：默认改小一点，防止初始太长
+        rowHeight: 28,     
+        headerWidth: 350   
+    };
+
+    const STAGE_CONFIG = [
+        { name: 'fetch',    short: 'F',  color: '#569cd6' },
+        { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
+        { name: 'rename',   short: 'Rn', color: '#6a9955' },
+        { name: 'dispatch', short: 'Ds', color: '#c586c0' },
+        { name: 'issue',    short: 'Is', color: '#ce9178' },
+        { name: 'complete', short: 'Cm', color: '#4fc1ff' },
+        { name: 'retire',   short: 'Rt', color: '#dcdcaa' }
+    ];
+
+    // --- 全局状态 ---
+    let traceData = [];
+    let minTick = 0;
+    
+    let viewState = {
+        scrollX: 0,
+        scrollY: 0,
+        scaleX: CONFIG.defaultScaleX,
+        rowHeight: CONFIG.rowHeight,
+        headerWidth: CONFIG.headerWidth
+    };
+
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const wrapper = document.getElementById('canvas-wrapper');
+    const tooltip = document.getElementById('tooltip');
+    const cycleTicksInput = document.getElementById('cycleTicks');
+
+    // --- 初始化 ---
+
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = wrapper.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+        ctx.scale(dpr, dpr);
+        draw();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- 交互逻辑 ---
+
+    // 1. 滚动与缩放
+    wrapper.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        
+        // Ctrl + 滚轮 = X轴缩放
+        // if (e.ctrlKey) {
+        //     const zoomSpeed = 0.05;
+        //     // 计算鼠标当前的相对 tick 位置，以便以鼠标为中心缩放
+        //     // 简单起见，这里先做中心缩放，或者左上角缩放
+        //     const oldScale = viewState.scaleX;
+        //     let newScale = oldScale - Math.sign(e.deltaY) * (oldScale * 0.1); 
+        //     newScale = Math.max(0.001, Math.min(2.0, newScale)); // 限制范围
+            
+        //     viewState.scaleX = newScale;
+        //     document.getElementById('status').innerText = `Zoom: ${(newScale*100).toFixed(1)}%`;
+        // } 
+        // Shift + 滚轮 = 横向滚动
+        if (e.shiftKey) {
+            viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaY);
+        } 
+        // 普通滚轮 = 垂直滚动
+        else {
+            viewState.scrollY = Math.max(0, viewState.scrollY + e.deltaY);
+            viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaX);
+        }
+        
+        requestAnimationFrame(draw);
+        updateTooltip(e.clientX, e.clientY);
+    }, { passive: false });
+
+    // 2. 鼠标点击与拖拽
+    let isDragging = false;
+    let lastMouse = { x: 0, y: 0 };
+
+    wrapper.addEventListener('mousedown', (e) => {
+        const rect = wrapper.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // 【功能修复】点击左侧 Header -> 跳转逻辑
+        if (x < viewState.headerWidth) {
+            // 计算点击了哪一行
+            // 实际行 Y = y + scrollY
+            const clickedRow = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
+            
+            if (clickedRow >= 0 && clickedRow < traceData.length) {
+                jumpToInstruction(clickedRow);
+            }
+        } 
+        // 点击右侧 -> 拖拽
+        else {
+            isDragging = true;
+            lastMouse = { x: e.clientX, y: e.clientY };
+            wrapper.style.cursor = 'grabbing';
+            tooltip.style.display = 'none';
+        }
+    });
+
+    function jumpToInstruction(index) {
+        const inst = traceData[index];
+        const startTick = inst.stages.fetch || 0;
+        
+        // 计算目标 X 位置
+        // 我们希望该指令的 fetch 阶段正好位于 Header 的右边缘
+        // 公式：scrollX = (tick - minTick) * scale
+        const targetScrollX = (startTick - minTick) * viewState.scaleX;
+        
+        // 动画或直接跳转
+        viewState.scrollX = Math.max(0, targetScrollX - 20); // 留 20px padding
+        
+        // 可选：垂直居中该行？
+        // viewState.scrollY = index * viewState.rowHeight - canvas.height / 2;
+        
+        requestAnimationFrame(draw);
+    }
+
+    wrapper.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            const dx = e.clientX - lastMouse.x;
+            const dy = e.clientY - lastMouse.y;
+            lastMouse = { x: e.clientX, y: e.clientY };
+            viewState.scrollX = Math.max(0, viewState.scrollX - dx);
+            viewState.scrollY = Math.max(0, viewState.scrollY - dy);
+            requestAnimationFrame(draw);
+            return;
+        }
+        updateTooltip(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseup', () => { 
+        isDragging = false; 
+        wrapper.style.cursor = 'default'; 
+    });
+
+    cycleTicksInput.addEventListener('input', () => requestAnimationFrame(draw));
+
+    // --- Tooltip ---
+        // --- Tooltip ---
+        function updateTooltip(mouseX, mouseY) {
+        // 1. 基础检查：如果没有数据或正在拖拽，隐藏
+        if (!traceData.length || isDragging) {
+            tooltip.style.display = 'none';
+            return;
+        }
+
+        const rect = wrapper.getBoundingClientRect();
+        // 计算鼠标相对于 Canvas 容器的坐标
+        const canvasX = mouseX - rect.left;
+        const canvasY = mouseY - rect.top;
+
+        // 【核心修改点】
+        // 如果鼠标在右侧流水线区域 (canvasX > headerWidth)，直接隐藏并返回
+        if (canvasX > viewState.headerWidth) {
+            tooltip.style.display = 'none';
+            return;
+        }
+
+        // 2. 计算当前行
+        const totalY = canvasY + viewState.scrollY;
+        const rowIndex = Math.floor(totalY / viewState.rowHeight);
+
+        // 3. 显示内容
+        if (rowIndex >= 0 && rowIndex < traceData.length) {
+            const inst = traceData[rowIndex];
+            
+            tooltip.style.display = 'block';
+            
+            // 调整 Tooltip 位置，使其显示在鼠标右侧一点，避免遮挡视线
+            let tipX = mouseX + 15; 
+            let tipY = mouseY + 15;
+            
+            // 防止溢出屏幕边界
+            if (tipX + 220 > window.innerWidth) tipX = mouseX - 230;
+            if (tipY + 200 > window.innerHeight) tipY = mouseY - 210;
+            
+            tooltip.style.left = `${tipX}px`;
+            tooltip.style.top = `${tipY}px`;
+
+            // 构建 HTML 内容
+            let content = `<h4>[${inst.id}] Instruction Detail</h4>`;
+            content += `<div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
+            content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div>`;
+            content += `<hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
+            
+            STAGE_CONFIG.forEach(s => {
+                if (inst.stages[s.name]) {
+                    content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
+                }
+            });
+            
+            if (inst.is_flushed) {
+                content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold;">⚠ FLUSHED</div>`;
+            }
+            tooltip.innerHTML = content;
+        } else {
+            tooltip.style.display = 'none';
+        }
+    }
+
+    // --- 数据加载 ---
+    async function loadData() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files[0]) return;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        document.getElementById('status').innerText = "Loading...";
+
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+
+            traceData = json.instructions;
+            minTick = json.min_tick;
+            
+            document.getElementById('status').innerText = `${traceData.length} Instructions Loaded`;
+            
+            viewState.scrollX = 0;
+            viewState.scrollY = 0;
+            viewState.scaleX = CONFIG.defaultScaleX; // 重置为默认缩放
+            
+            resizeCanvas();
+        } catch (e) {
+            console.error(e);
+            alert("Error: " + e.message);
+        }
+    }
+
+
+    // --- 绘制引擎 ---
+    function draw() {
+        if (!traceData.length) return;
+        
+        const width = canvas.offsetWidth;
+        const height = canvas.offsetHeight;
+        const ticksPerCycle = parseInt(cycleTicksInput.value) || 500;
+
+        ctx.fillStyle = "#1e1e1e";
+        ctx.fillRect(0, 0, width, height);
+
+        const startRow = Math.floor(viewState.scrollY / viewState.rowHeight);
+        const endRow = Math.min(traceData.length, Math.ceil((viewState.scrollY + height) / viewState.rowHeight));
+
+        ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
+        ctx.textBaseline = "middle";
+
+        // === LAYER 1: 裁剪区域 (流水线) ===
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height);
+        ctx.clip();
+        
+        ctx.translate(-viewState.scrollX + viewState.headerWidth, -viewState.scrollY);
+
+        // 1. 色块
+        for (let i = startRow; i < endRow; i++) {
+            const inst = traceData[i];
+            const y = i * viewState.rowHeight;
+
+            if (inst.is_flushed) ctx.globalAlpha = 0.4;
+            else ctx.globalAlpha = 1.0;
+
+            for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
+                const curr = STAGE_CONFIG[s];
+                const next = STAGE_CONFIG[s+1];
+                const t1 = inst.stages[curr.name];
+                let t2 = inst.stages[next.name];
+                
+                let widthVal = 0;
+                if (t1) {
+                    if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
+                    else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
+                    
+                    if (widthVal > 0) {
+                        const x = (t1 - minTick) * viewState.scaleX;
+                        if (x - viewState.scrollX + viewState.headerWidth < width + 100 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
+                             ctx.fillStyle = curr.color;
+                             ctx.fillRect(x, y + 3, widthVal, viewState.rowHeight - 6);
+                        }
+                    }
+                }
+            }
+        }
+        ctx.globalAlpha = 1.0;
+
+        // 2. 网格线 (Step 2: Overlay Grid)
+        // 只有当格子大于 5px 才画，防止变全白
+        const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
+        if (pixelsPerCycle > 5) {
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; // 淡网格
+            
+            const visibleStartTick = (viewState.scrollX) / viewState.scaleX; 
+            const visibleEndTick = (viewState.scrollX + width - viewState.headerWidth) / viewState.scaleX;
+            const startCycleIdx = Math.floor(visibleStartTick / ticksPerCycle);
+            const endCycleIdx = Math.ceil(visibleEndTick / ticksPerCycle);
+
+            ctx.beginPath();
+            for (let c = startCycleIdx; c <= endCycleIdx; c++) {
+                const x = (c * ticksPerCycle) * viewState.scaleX;
+                ctx.moveTo(x, viewState.scrollY);
+                ctx.lineTo(x, viewState.scrollY + height);
+            }
+            ctx.stroke();
+        }
+
+        // 3. 标签文字 (Step 3: Labels)
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        
+        for (let i = startRow; i < endRow; i++) {
+            const inst = traceData[i];
+            const y = i * viewState.rowHeight;
+
+            for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
+                const curr = STAGE_CONFIG[s];
+                const next = STAGE_CONFIG[s+1];
+                const t1 = inst.stages[curr.name];
+                let t2 = inst.stages[next.name];
+                
+                let widthVal = 0;
+                if (t1) {
+                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
+                     else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
+
+                     if (widthVal > 24) { 
+                        const x = (t1 - minTick) * viewState.scaleX;
+                        if (x - viewState.scrollX + viewState.headerWidth < width + 50 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
+                            ctx.fillText(curr.short, x + widthVal/2, y + viewState.rowHeight/2 + 1);
+                        }
+                     }
+                }
+            }
+        }
+        ctx.restore();
+
+        // === LAYER 2: Header ===
+        ctx.save();
+        ctx.translate(0, -viewState.scrollY);
+
+        for (let i = startRow; i < endRow; i++) {
+            const inst = traceData[i];
+            const y = i * viewState.rowHeight;
+            const yCenter = y + viewState.rowHeight / 2;
+
+            // 背景
+            ctx.fillStyle = (i % 2 === 0) ? "#252526" : "#1e1e1e";
+            ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
+            
+            // 下划线
+            ctx.strokeStyle = "#2d2d30";
+            ctx.beginPath(); ctx.moveTo(0, y + viewState.rowHeight); ctx.lineTo(viewState.headerWidth, y + viewState.rowHeight); ctx.stroke();
+
+            // ID
+            ctx.textAlign = "right";
+            ctx.fillStyle = "#555";
+            ctx.fillText(inst.id, 45, yCenter);
+
+            // Disasm
+            ctx.textAlign = "left";
+            if (inst.is_flushed) {
+                ctx.fillStyle = "#666";
+                ctx.font = "italic 12px Consolas";
+            } else {
+                ctx.fillStyle = "#ccc";
+                ctx.font = "12px Consolas";
+            }
+            
+            let text = inst.disasm;
+            if(text.length > 38) text = text.substring(0, 36) + "...";
+            ctx.fillText(text, 60, yCenter);
+        }
+        
+        ctx.restore(); 
+        
+        // 分割线
+        ctx.beginPath();
+        ctx.moveTo(viewState.headerWidth, 0);
+        ctx.lineTo(viewState.headerWidth, height);
+        ctx.strokeStyle = "#444";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+</script>
+</body>
+</html>
