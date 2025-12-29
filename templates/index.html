@@ -7,10 +7,9 @@
         :root {
             --bg-color: #1e1e1e;
             --header-bg: #252526;
-            --sidebar-bg: #252526;
-            --text-color: #cccccc;
-            --accent-color: #007acc;
             --border-color: #3e3e42;
+            --accent-color: #007acc;
+            --text-color: #cccccc;
         }
 
         body { 
@@ -25,20 +24,19 @@
             user-select: none; 
         }
         
-        /* 顶部工具栏 */
         .toolbar { 
             height: 40px;
             padding: 0 16px; 
             background: var(--header-bg); 
             border-bottom: 1px solid var(--border-color); 
             display: flex; 
-            gap: 16px; 
+            gap: 12px; 
             align-items: center; 
             flex-shrink: 0;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         
-        .brand { font-weight: 600; font-size: 14px; color: #fff; margin-right: 10px; }
+        .brand { font-weight: 600; font-size: 14px; color: #fff; margin-right: 5px; }
 
         .btn {
             background: #3c3c3c;
@@ -57,20 +55,25 @@
         
         input[type="file"] { display: none; } 
 
-        .input-group { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+        .input-group { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+        .input-group label { color: #aaa; }
+        
+        /* 统一样式输入框 */
         input[type="number"] { 
-            width: 50px; 
             background: #3c3c3c; 
             border: 1px solid #555; 
             color: #fff; 
-            padding: 3px; 
+            padding: 3px 5px; 
             border-radius: 2px;
+            font-family: 'Consolas', monospace;
         }
+        
+        .range-input { width: 80px; }
+        .tick-input { width: 50px; }
 
+        .separator { width: 1px; height: 18px; background: #444; margin: 0 5px; }
         .status { font-size: 11px; margin-left: auto; color: #888; }
-        .help-tip { font-size: 11px; color: #666; margin-left: 10px; }
 
-        /* Canvas 容器 */
         #canvas-wrapper { 
             flex: 1; 
             position: relative; 
@@ -80,23 +83,17 @@
         }
         canvas { display: block; width: 100%; height: 100%; }
 
-        /* 悬浮 Tooltip */
+        /* Tooltip */
         #tooltip {
-            position: fixed;
-            display: none;
-            background: #2d2d30;
-            border: 1px solid #454545;
+            position: fixed; display: none;
+            background: #2d2d30; border: 1px solid #454545;
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #eee;
-            z-index: 1000;
-            pointer-events: none; 
-            min-width: 200px;
+            padding: 8px 12px; border-radius: 4px;
+            font-size: 12px; color: #eee; z-index: 1000;
+            pointer-events: none; min-width: 200px;
         }
-        #tooltip h4 { margin: 0 0 6px 0; color: #fff; font-size: 13px; border-bottom: 1px solid #444; padding-bottom: 4px; }
-        #tooltip .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        #tooltip h4 { margin: 0 0 6px 0; color: #fff; border-bottom: 1px solid #444; padding-bottom: 4px; }
+        #tooltip .row { display: flex; justify-content: space-between; }
         #tooltip .key { color: #888; }
         #tooltip .val { font-family: 'Consolas', monospace; color: #4fc1ff; }
     </style>
@@ -107,19 +104,29 @@
         <span class="brand">GEM5 VIEWER</span>
         
         <label class="btn btn-primary">
-            Open Trace
-            <input type="file" id="fileInput" accept=".out,.txt" onchange="loadData()">
+            Select File
+            <input type="file" id="fileInput" accept=".out,.txt">
         </label>
         
-        <div style="width:1px; height:20px; background:#444;"></div>
+        <div class="separator"></div>
+
+        <!-- 新增：范围输入 -->
+        <div class="input-group" title="Load specific tick range">
+            <label>Range:</label>
+            <input type="number" id="startTick" class="range-input" placeholder="Start" value="0">
+            <span>-</span>
+            <input type="number" id="endTick" class="range-input" placeholder="End (Optional)">
+        </div>
+        
+        <button class="btn" onclick="loadData()">Load Data</button>
+
+        <div class="separator"></div>
 
         <div class="input-group" title="Gem5 Ticks per Cycle">
-            <span>Ticks/Cycle:</span>
-            <input type="number" id="cycleTicks" value="500" step="100">
+            <label>Ticks/Cycle:</label>
+            <input type="number" id="cycleTicks" class="tick-input" value="500" step="100">
         </div>
 
-        <span class="help-tip">(Ctrl+Wheel to Zoom X)</span>
-        
         <span id="status" class="status">Ready</span>
     </div>
 
@@ -129,9 +136,8 @@
     </div>
 
 <script>
-    // --- 配置 ---
     const CONFIG = {
-        defaultScaleX: 0.05, // 修改：默认改小一点，防止初始太长
+        defaultScaleX: 0.05,
         rowHeight: 28,     
         headerWidth: 350   
     };
@@ -146,7 +152,6 @@
         { name: 'retire',   short: 'Rt', color: '#dcdcaa' }
     ];
 
-    // --- 全局状态 ---
     let traceData = [];
     let minTick = 0;
     
@@ -164,8 +169,6 @@
     const tooltip = document.getElementById('tooltip');
     const cycleTicksInput = document.getElementById('cycleTicks');
 
-    // --- 初始化 ---
-
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
         const rect = wrapper.getBoundingClientRect();
@@ -179,29 +182,19 @@
     window.addEventListener('resize', resizeCanvas);
 
     // --- 交互逻辑 ---
-
-    // 1. 滚动与缩放
     wrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
         
-        // Ctrl + 滚轮 = X轴缩放
-        // if (e.ctrlKey) {
-        //     const zoomSpeed = 0.05;
-        //     // 计算鼠标当前的相对 tick 位置，以便以鼠标为中心缩放
-        //     // 简单起见，这里先做中心缩放，或者左上角缩放
-        //     const oldScale = viewState.scaleX;
-        //     let newScale = oldScale - Math.sign(e.deltaY) * (oldScale * 0.1); 
-        //     newScale = Math.max(0.001, Math.min(2.0, newScale)); // 限制范围
-            
-        //     viewState.scaleX = newScale;
-        //     document.getElementById('status').innerText = `Zoom: ${(newScale*100).toFixed(1)}%`;
-        // } 
-        // Shift + 滚轮 = 横向滚动
+        // 移除 Ctrl 缩放，只保留滚轮滚动
+        /*
+        if (e.ctrlKey) {
+             // ...
+        }
+        */
+
         if (e.shiftKey) {
             viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaY);
-        } 
-        // 普通滚轮 = 垂直滚动
-        else {
+        } else {
             viewState.scrollY = Math.max(0, viewState.scrollY + e.deltaY);
             viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaX);
         }
@@ -210,7 +203,6 @@
         updateTooltip(e.clientX, e.clientY);
     }, { passive: false });
 
-    // 2. 鼠标点击与拖拽
     let isDragging = false;
     let lastMouse = { x: 0, y: 0 };
 
@@ -219,18 +211,10 @@
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
-        // 【功能修复】点击左侧 Header -> 跳转逻辑
         if (x < viewState.headerWidth) {
-            // 计算点击了哪一行
-            // 实际行 Y = y + scrollY
             const clickedRow = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
-            
-            if (clickedRow >= 0 && clickedRow < traceData.length) {
-                jumpToInstruction(clickedRow);
-            }
-        } 
-        // 点击右侧 -> 拖拽
-        else {
+            if (clickedRow >= 0 && clickedRow < traceData.length) jumpToInstruction(clickedRow);
+        } else {
             isDragging = true;
             lastMouse = { x: e.clientX, y: e.clientY };
             wrapper.style.cursor = 'grabbing';
@@ -241,18 +225,8 @@
     function jumpToInstruction(index) {
         const inst = traceData[index];
         const startTick = inst.stages.fetch || 0;
-        
-        // 计算目标 X 位置
-        // 我们希望该指令的 fetch 阶段正好位于 Header 的右边缘
-        // 公式：scrollX = (tick - minTick) * scale
         const targetScrollX = (startTick - minTick) * viewState.scaleX;
-        
-        // 动画或直接跳转
-        viewState.scrollX = Math.max(0, targetScrollX - 20); // 留 20px padding
-        
-        // 可选：垂直居中该行？
-        // viewState.scrollY = index * viewState.rowHeight - canvas.height / 2;
-        
+        viewState.scrollX = Math.max(0, targetScrollX - 20);
         requestAnimationFrame(draw);
     }
 
@@ -269,84 +243,68 @@
         updateTooltip(e.clientX, e.clientY);
     });
 
-    window.addEventListener('mouseup', () => { 
-        isDragging = false; 
-        wrapper.style.cursor = 'default'; 
-    });
-
+    window.addEventListener('mouseup', () => { isDragging = false; wrapper.style.cursor = 'default'; });
     cycleTicksInput.addEventListener('input', () => requestAnimationFrame(draw));
 
-    // --- Tooltip ---
-        // --- Tooltip ---
-        function updateTooltip(mouseX, mouseY) {
-        // 1. 基础检查：如果没有数据或正在拖拽，隐藏
+    function updateTooltip(mouseX, mouseY) {
         if (!traceData.length || isDragging) {
             tooltip.style.display = 'none';
             return;
         }
-
         const rect = wrapper.getBoundingClientRect();
-        // 计算鼠标相对于 Canvas 容器的坐标
         const canvasX = mouseX - rect.left;
-        const canvasY = mouseY - rect.top;
-
-        // 【核心修改点】
-        // 如果鼠标在右侧流水线区域 (canvasX > headerWidth)，直接隐藏并返回
+        
+        // 仅在左侧显示
         if (canvasX > viewState.headerWidth) {
             tooltip.style.display = 'none';
             return;
         }
 
-        // 2. 计算当前行
+        const canvasY = mouseY - rect.top;
         const totalY = canvasY + viewState.scrollY;
         const rowIndex = Math.floor(totalY / viewState.rowHeight);
 
-        // 3. 显示内容
         if (rowIndex >= 0 && rowIndex < traceData.length) {
             const inst = traceData[rowIndex];
-            
             tooltip.style.display = 'block';
-            
-            // 调整 Tooltip 位置，使其显示在鼠标右侧一点，避免遮挡视线
-            let tipX = mouseX + 15; 
+            let tipX = mouseX + 15;
             let tipY = mouseY + 15;
-            
-            // 防止溢出屏幕边界
             if (tipX + 220 > window.innerWidth) tipX = mouseX - 230;
             if (tipY + 200 > window.innerHeight) tipY = mouseY - 210;
-            
             tooltip.style.left = `${tipX}px`;
             tooltip.style.top = `${tipY}px`;
 
-            // 构建 HTML 内容
-            let content = `<h4>[${inst.id}] Instruction Detail</h4>`;
+            let content = `<h4>[${inst.id}] Instruction</h4>`;
             content += `<div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
             content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div>`;
             content += `<hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
-            
             STAGE_CONFIG.forEach(s => {
-                if (inst.stages[s.name]) {
-                    content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
-                }
+                if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
             });
-            
-            if (inst.is_flushed) {
-                content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold;">⚠ FLUSHED</div>`;
-            }
+            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold;">⚠ FLUSHED</div>`;
             tooltip.innerHTML = content;
         } else {
             tooltip.style.display = 'none';
         }
     }
 
-    // --- 数据加载 ---
+    // --- 数据加载 (核心更新) ---
     async function loadData() {
         const fileInput = document.getElementById('fileInput');
-        if (!fileInput.files[0]) return;
+        if (!fileInput.files[0]) return alert("Please select a file first.");
+
+        const startTick = document.getElementById('startTick').value;
+        const endTick = document.getElementById('endTick').value;
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
-        document.getElementById('status').innerText = "Loading...";
+        // 传递范围参数
+        formData.append('start_tick', startTick);
+        if(endTick) formData.append('end_tick', endTick);
+
+        document.getElementById('status').innerText = "Streaming & Parsing...";
+        traceData = []; // 清空现有数据
+        draw(); // 清空画布
 
         try {
             const res = await fetch('/upload', { method: 'POST', body: formData });
@@ -356,23 +314,30 @@
             traceData = json.instructions;
             minTick = json.min_tick;
             
-            document.getElementById('status').innerText = `${traceData.length} Instructions Loaded`;
+            document.getElementById('status').innerText = `${traceData.length} Insts Loaded (Tick ${minTick}+)`;
             
             viewState.scrollX = 0;
             viewState.scrollY = 0;
-            viewState.scaleX = CONFIG.defaultScaleX; // 重置为默认缩放
-            
+            viewState.scaleX = CONFIG.defaultScaleX;
             resizeCanvas();
         } catch (e) {
             console.error(e);
             alert("Error: " + e.message);
+            document.getElementById('status').innerText = "Error";
         }
     }
 
-
-    // --- 绘制引擎 ---
     function draw() {
-        if (!traceData.length) return;
+        // ... (保持之前的 draw 函数不变，除了 Ctrl 缩放被移除) ...
+        // 为了完整性，这里简写，请使用上一个回答中最后的 draw() 函数内容
+        // 唯一区别是你可以去掉 Ctrl 缩放的逻辑
+        if (!traceData.length) {
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+            ctx.fillStyle = "#1e1e1e";
+            ctx.fillRect(0, 0, width, height);
+            return;
+        }
         
         const width = canvas.offsetWidth;
         const height = canvas.offsetHeight;
@@ -387,33 +352,26 @@
         ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
         ctx.textBaseline = "middle";
 
-        // === LAYER 1: 裁剪区域 (流水线) ===
         ctx.save();
         ctx.beginPath();
         ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height);
         ctx.clip();
-        
         ctx.translate(-viewState.scrollX + viewState.headerWidth, -viewState.scrollY);
 
-        // 1. 色块
         for (let i = startRow; i < endRow; i++) {
             const inst = traceData[i];
             const y = i * viewState.rowHeight;
-
             if (inst.is_flushed) ctx.globalAlpha = 0.4;
             else ctx.globalAlpha = 1.0;
-
             for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
                 const curr = STAGE_CONFIG[s];
                 const next = STAGE_CONFIG[s+1];
                 const t1 = inst.stages[curr.name];
                 let t2 = inst.stages[next.name];
-                
                 let widthVal = 0;
                 if (t1) {
                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
                     else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
-                    
                     if (widthVal > 0) {
                         const x = (t1 - minTick) * viewState.scaleX;
                         if (x - viewState.scrollX + viewState.headerWidth < width + 100 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
@@ -426,18 +384,14 @@
         }
         ctx.globalAlpha = 1.0;
 
-        // 2. 网格线 (Step 2: Overlay Grid)
-        // 只有当格子大于 5px 才画，防止变全白
         const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
         if (pixelsPerCycle > 5) {
             ctx.lineWidth = 1;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; // 淡网格
-            
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; 
             const visibleStartTick = (viewState.scrollX) / viewState.scaleX; 
             const visibleEndTick = (viewState.scrollX + width - viewState.headerWidth) / viewState.scaleX;
             const startCycleIdx = Math.floor(visibleStartTick / ticksPerCycle);
             const endCycleIdx = Math.ceil(visibleEndTick / ticksPerCycle);
-
             ctx.beginPath();
             for (let c = startCycleIdx; c <= endCycleIdx; c++) {
                 const x = (c * ticksPerCycle) * viewState.scaleX;
@@ -447,25 +401,20 @@
             ctx.stroke();
         }
 
-        // 3. 标签文字 (Step 3: Labels)
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(255,255,255,0.9)";
-        
         for (let i = startRow; i < endRow; i++) {
             const inst = traceData[i];
             const y = i * viewState.rowHeight;
-
             for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
                 const curr = STAGE_CONFIG[s];
                 const next = STAGE_CONFIG[s+1];
                 const t1 = inst.stages[curr.name];
                 let t2 = inst.stages[next.name];
-                
                 let widthVal = 0;
                 if (t1) {
                      if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
                      else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
-
                      if (widthVal > 24) { 
                         const x = (t1 - minTick) * viewState.scaleX;
                         if (x - viewState.scrollX + viewState.headerWidth < width + 50 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
@@ -477,29 +426,19 @@
         }
         ctx.restore();
 
-        // === LAYER 2: Header ===
         ctx.save();
         ctx.translate(0, -viewState.scrollY);
-
         for (let i = startRow; i < endRow; i++) {
             const inst = traceData[i];
             const y = i * viewState.rowHeight;
             const yCenter = y + viewState.rowHeight / 2;
-
-            // 背景
             ctx.fillStyle = (i % 2 === 0) ? "#252526" : "#1e1e1e";
             ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
-            
-            // 下划线
             ctx.strokeStyle = "#2d2d30";
             ctx.beginPath(); ctx.moveTo(0, y + viewState.rowHeight); ctx.lineTo(viewState.headerWidth, y + viewState.rowHeight); ctx.stroke();
-
-            // ID
             ctx.textAlign = "right";
             ctx.fillStyle = "#555";
             ctx.fillText(inst.id, 45, yCenter);
-
-            // Disasm
             ctx.textAlign = "left";
             if (inst.is_flushed) {
                 ctx.fillStyle = "#666";
@@ -508,15 +447,12 @@
                 ctx.fillStyle = "#ccc";
                 ctx.font = "12px Consolas";
             }
-            
             let text = inst.disasm;
             if(text.length > 38) text = text.substring(0, 36) + "...";
             ctx.fillText(text, 60, yCenter);
         }
-        
         ctx.restore(); 
         
-        // 分割线
         ctx.beginPath();
         ctx.moveTo(viewState.headerWidth, 0);
         ctx.lineTo(viewState.headerWidth, height);
