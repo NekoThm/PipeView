@@ -1,24 +1,21 @@
 from flask import Flask, request, jsonify, render_template
+import collections
 
 app = Flask(__name__)
 
 def parse_o3_pipeview_stream(file_storage, start_tick, end_tick):
-    """
-    流式解析 trace 文件。
-    直接迭代 file_storage 对象获取二进制行，避免 TextIOWrapper兼容性问题。
-    """
     instructions_map = {}
     current_grouped_inst = None
+    
+    # 暂存 Cache 事件的缓冲区
+    pending_cache_events = collections.defaultdict(list)
     
     min_tick_in_range = float('inf')
     tick_margin = 10000 
     
-    # 确保从头开始读取
     file_storage.seek(0)
 
-    # 直接迭代 file_storage，它会产生 bytes 类型的行
     for binary_line in file_storage:
-        # 手动解码，忽略错误
         try:
             line = binary_line.decode('utf-8', errors='ignore').strip()
         except:
@@ -36,77 +33,90 @@ def parse_o3_pipeview_stream(file_storage, start_tick, end_tick):
         except ValueError:
             continue
 
-        # --- 1. 处理 Fetch (新指令) ---
-        if stage == 'fetch':
-            # 核心过滤逻辑
-            
-            # A. 如果设置了结束时间，且当前 tick 远超结束时间 -> 停止读取
-            if end_tick > 0 and tick > end_tick + tick_margin:
-                break 
-            
-            # B. 如果小于开始时间 -> 跳过
-            if tick < start_tick:
-                continue
-            
-            # C. 在范围内 -> 解析
+        # --- 1. 处理 Cache Miss ---
+        if stage == 'cache':
+            if len(parts) >= 9 and parts[6] == 'sn':
+                result = parts[8].strip()
+                if 'miss' in result.lower():
+                    try:
+                        sn = int(parts[7])
+                        # [修改] 增加 "vaddr": parts[4]
+                        event = { 
+                            "tick": tick, 
+                            "type": parts[3], 
+                            "vaddr": parts[4], # 新增：解析虚拟地址
+                            "paddr": parts[5], 
+                            "result": result 
+                        }
+                        
+                        if sn in instructions_map:
+                            if 'cache_events' not in instructions_map[sn]: instructions_map[sn]['cache_events'] = []
+                            instructions_map[sn]['cache_events'].append(event)
+                        else:
+                            pending_cache_events[sn].append(event)
+                    except ValueError: pass
+            continue
+
+        # --- 2. 处理 Fetch ---
+        elif stage == 'fetch':
+            if end_tick > 0 and tick > end_tick + tick_margin: break 
+            if tick < start_tick: continue
             if len(parts) < 6: continue
             try:
                 sn = int(parts[5])
                 disasm = ":".join(parts[6:])
                 inst = {
-                    "id": sn,
-                    "pc": parts[3],
-                    "disasm": disasm,
-                    "stages": {"fetch": tick},
-                    "is_flushed": False 
+                    "id": sn, "pc": parts[3], "disasm": disasm,
+                    "stages": {"fetch": tick}, "is_flushed": False, "cache_events": [] 
                 }
+                if sn in pending_cache_events:
+                    inst['cache_events'].extend(pending_cache_events[sn])
+                    del pending_cache_events[sn]
+                
                 instructions_map[sn] = inst
                 current_grouped_inst = inst
-                
-                if tick < min_tick_in_range:
-                    min_tick_in_range = tick
-                    
-            except (ValueError, IndexError):
-                continue
+                if tick < min_tick_in_range: min_tick_in_range = tick
+            except: continue
 
-        # --- 2. 处理其他阶段 ---
+        # --- 3. 处理其他阶段 (含 Store 解析) ---
         else:
-            # 只有当该指令已经被收录（即 fetch 在范围内）时，才更新后续阶段
             target_inst = None
-            
-            # 尝试 Explicit SN 匹配
             if len(parts) > 3:
                 try:
                     possible_sn = int(parts[-1])
-                    if possible_sn in instructions_map:
-                        target_inst = instructions_map[possible_sn]
+                    if possible_sn in instructions_map: target_inst = instructions_map[possible_sn]
                 except ValueError: pass
-            
-            # 尝试 Implicit Context 匹配
-            if not target_inst and current_grouped_inst:
-                target_inst = current_grouped_inst
+            if not target_inst and current_grouped_inst: target_inst = current_grouped_inst
             
             if target_inst:
                 if tick > 0:
                     target_inst["stages"][stage] = tick
                 
                 if stage == 'retire':
-                    if tick == 0:
-                        target_inst["is_flushed"] = True
+                    if tick == 0: target_inst["is_flushed"] = True
+                    # 解析 Store
+                    if len(parts) >= 5 and parts[3] == 'store':
+                        try:
+                            store_tick = int(parts[4])
+                            if store_tick > 0:
+                                target_inst["stages"]["store"] = store_tick
+                        except ValueError: pass
+
                     if target_inst == current_grouped_inst:
                         current_grouped_inst = None
 
-    # 后处理：转换为列表并排序
+    # 后处理
     result_list = list(instructions_map.values())
     result_list.sort(key=lambda x: x['id'])
-    
-    # 再次检查 flush 状态
     for inst in result_list:
         if 'retire' not in inst['stages'] or inst['stages']['retire'] == 0:
             inst['is_flushed'] = True
 
-    # 如果没有找到数据，min_tick 默认为 start_tick，防止前端计算出错
-    final_min = min_tick_in_range if result_list else start_tick
+    # [修复错误] 明确计算 final_min
+    if result_list and min_tick_in_range != float('inf'):
+        final_min = min_tick_in_range
+    else:
+        final_min = start_tick
     
     return {
         "min_tick": final_min, 
@@ -122,32 +132,16 @@ def index():
 def upload_file():
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    # 获取范围参数
     try:
         start_tick = int(request.form.get('start_tick', 0))
-    except:
-        start_tick = 0
-        
-    try:
         end_tick = int(request.form.get('end_tick', -1))
-    except:
-        end_tick = -1 
-
-    try:
-        # 直接传入 file 对象，而不是 file.stream
         data = parse_o3_pipeview_stream(file, start_tick, end_tick)
         return jsonify(data)
     except Exception as e:
         import traceback
-        traceback.print_exc() # 在控制台打印详细错误，方便调试
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
-
-

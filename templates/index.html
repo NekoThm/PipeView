@@ -149,7 +149,9 @@
         { name: 'dispatch', short: 'Ds', color: '#c586c0' },
         { name: 'issue',    short: 'Is', color: '#ce9178' },
         { name: 'complete', short: 'Cm', color: '#4fc1ff' },
-        { name: 'retire',   short: 'Rt', color: '#dcdcaa' }
+        { name: 'retire',   short: 'Rt', color: '#dcdcaa' },
+        // 新增 Store 阶段 (紫色)
+        { name: 'store',    short: 'St', color: '#9cdcfe' } 
     ];
 
     let traceData = [];
@@ -254,7 +256,6 @@
         const rect = wrapper.getBoundingClientRect();
         const canvasX = mouseX - rect.left;
         
-        // 仅在左侧显示
         if (canvasX > viewState.headerWidth) {
             tooltip.style.display = 'none';
             return;
@@ -267,6 +268,8 @@
         if (rowIndex >= 0 && rowIndex < traceData.length) {
             const inst = traceData[rowIndex];
             tooltip.style.display = 'block';
+            
+            // 调整 Tooltip 位置
             let tipX = mouseX + 15;
             let tipY = mouseY + 15;
             if (tipX + 220 > window.innerWidth) tipX = mouseX - 230;
@@ -278,10 +281,30 @@
             content += `<div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
             content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div>`;
             content += `<hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
+            
             STAGE_CONFIG.forEach(s => {
                 if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
             });
-            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold;">⚠ FLUSHED</div>`;
+
+            // --- 新增：Cache Miss 详情显示 ---
+            if (inst.cache_events && inst.cache_events.length > 0) {
+                 content += `<hr style="border:0; border-top:1px dashed #666; margin:6px 0;">`;
+                 content += `<div style="color:#ff6b6b; font-weight:bold; margin-bottom:4px;">⚠ Cache Miss:</div>`;
+                 inst.cache_events.forEach(e => {
+                     content += `<div style="font-size:11px; border-left:2px solid #ff4d4d; padding-left:4px; margin-bottom:2px">`;
+                     content += `<span style="color:#aaa">${e.type}</span> <span style="color:#4fc1ff">@${e.tick}</span><br>`;
+                     
+                     // [修改] 这里改为使用 e.vaddr
+                     content += `<span style="color:#ddd">VA:${e.vaddr}</span>`; 
+                     // 如果想同时显示 PA，可以保留下面这行：
+                     // content += ` <span style="color:#666">(${e.paddr})</span>`;
+                     
+                     content += `</div>`;
+                 });
+            }
+            // ------------------------------------
+
+            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold; border-top:1px solid #444; padding-top:2px">⚠ FLUSHED</div>`;
             tooltip.innerHTML = content;
         } else {
             tooltip.style.display = 'none';
@@ -328,9 +351,6 @@
     }
 
     function draw() {
-        // ... (保持之前的 draw 函数不变，除了 Ctrl 缩放被移除) ...
-        // 为了完整性，这里简写，请使用上一个回答中最后的 draw() 函数内容
-        // 唯一区别是你可以去掉 Ctrl 缩放的逻辑
         if (!traceData.length) {
             const width = canvas.offsetWidth;
             const height = canvas.offsetHeight;
@@ -352,6 +372,7 @@
         ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
         ctx.textBaseline = "middle";
 
+        // 1. 绘制流水线图表区
         ctx.save();
         ctx.beginPath();
         ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height);
@@ -361,29 +382,59 @@
         for (let i = startRow; i < endRow; i++) {
             const inst = traceData[i];
             const y = i * viewState.rowHeight;
+            const yCenter = y + viewState.rowHeight / 2;
+
             if (inst.is_flushed) ctx.globalAlpha = 0.4;
             else ctx.globalAlpha = 1.0;
+
+            // 绘制流水线阶段
             for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
                 const curr = STAGE_CONFIG[s];
                 const next = STAGE_CONFIG[s+1];
                 const t1 = inst.stages[curr.name];
                 let t2 = inst.stages[next.name];
                 let widthVal = 0;
+                
                 if (t1) {
                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
                     else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
+                    
                     if (widthVal > 0) {
                         const x = (t1 - minTick) * viewState.scaleX;
-                        if (x - viewState.scrollX + viewState.headerWidth < width + 100 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
+                        // 简单的视口剔除
+                        if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX - viewState.headerWidth) {
                              ctx.fillStyle = curr.color;
                              ctx.fillRect(x, y + 3, widthVal, viewState.rowHeight - 6);
                         }
                     }
                 }
             }
+
+            // --- 新增：绘制 Cache Miss 标记 (红色圆点) ---
+            if (inst.cache_events && inst.cache_events.length > 0) {
+                ctx.globalAlpha = 1.0; // 标记不透明
+                ctx.fillStyle = "#ff4d4d"; // 鲜艳的红色
+                
+                inst.cache_events.forEach(e => {
+                    const x = (e.tick - minTick) * viewState.scaleX;
+                    // 视口剔除
+                    if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
+                        ctx.beginPath();
+                        ctx.arc(x, yCenter, 4, 0, Math.PI * 2); // 半径为4的圆点
+                        ctx.fill();
+                        
+                        // 可选：绘制一个小的外圈让它更明显
+                        ctx.strokeStyle = "#fff";
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                });
+            }
+            // ----------------------------------------------
         }
         ctx.globalAlpha = 1.0;
 
+        // 绘制周期竖线 (保持不变)
         const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
         if (pixelsPerCycle > 5) {
             ctx.lineWidth = 1;
@@ -401,6 +452,7 @@
             ctx.stroke();
         }
 
+        // 绘制阶段文字 (保持不变)
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(255,255,255,0.9)";
         for (let i = startRow; i < endRow; i++) {
@@ -417,7 +469,7 @@
                      else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
                      if (widthVal > 24) { 
                         const x = (t1 - minTick) * viewState.scaleX;
-                        if (x - viewState.scrollX + viewState.headerWidth < width + 50 && x + widthVal - viewState.scrollX > -viewState.headerWidth) {
+                        if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX) {
                             ctx.fillText(curr.short, x + widthVal/2, y + viewState.rowHeight/2 + 1);
                         }
                      }
@@ -426,6 +478,7 @@
         }
         ctx.restore();
 
+        // 2. 绘制左侧头部 (保持不变)
         ctx.save();
         ctx.translate(0, -viewState.scrollY);
         for (let i = startRow; i < endRow; i++) {
@@ -434,11 +487,20 @@
             const yCenter = y + viewState.rowHeight / 2;
             ctx.fillStyle = (i % 2 === 0) ? "#252526" : "#1e1e1e";
             ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
+            
+            // 如果有 miss，高亮指令ID背景
+            if (inst.cache_events && inst.cache_events.length > 0) {
+                 ctx.fillStyle = "rgba(255, 77, 77, 0.1)"; // 淡淡的红色背景
+                 ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
+            }
+
             ctx.strokeStyle = "#2d2d30";
             ctx.beginPath(); ctx.moveTo(0, y + viewState.rowHeight); ctx.lineTo(viewState.headerWidth, y + viewState.rowHeight); ctx.stroke();
+            
             ctx.textAlign = "right";
-            ctx.fillStyle = "#555";
+            ctx.fillStyle = (inst.cache_events && inst.cache_events.length > 0) ? "#ff9999" : "#555"; // Miss 指令 ID 变红
             ctx.fillText(inst.id, 45, yCenter);
+            
             ctx.textAlign = "left";
             if (inst.is_flushed) {
                 ctx.fillStyle = "#666";
@@ -453,6 +515,7 @@
         }
         ctx.restore(); 
         
+        // 分割线
         ctx.beginPath();
         ctx.moveTo(viewState.headerWidth, 0);
         ctx.lineTo(viewState.headerWidth, height);
