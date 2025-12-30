@@ -2,7 +2,7 @@
 
 ---
 
-<img src="/Users/linziqing/Downloads/截屏2025-12-30 13.10.42.png" alt="截屏2025-12-30 13.10.42" style="zoom:33%;" />
+<img src="images/PipeView.png" alt="PipeView" width="50%" />
 
 * O3CPU pipeline visualizer for O3PipeView formats
 * identify pipeline events including cache miss
