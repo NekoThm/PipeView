@@ -1,0 +1,532 @@
+O3PipeView:fetch:78500:0x00010560:0:8:addi a3, zero, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x0001055c:0:7:andi sp, sp, 18446744073709551600
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x00010558:0:6:addi a2, sp, 8
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x00010554:0:5:ld a1, 0(sp)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x00010550:0:4:addi a0, a0, 40
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x0001054c:0:3:auipc a0, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x00010548:0:2:addi a5, a0, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x0001057c:0:15:addi gp, gp, -1240
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x00010578:0:14:auipc gp, 134
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x00010574:0:13:jal zero, 244
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x00010570:0:12:ebreak
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x0001056c:0:11:jal ra, 548
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x00010568:0:10:addi a6, sp, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:79000:0x00010564:0:9:addi a4, zero, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:78500:0x00010544:0:1:jal ra, 52
+O3PipeView:decode:79000
+O3PipeView:rename:79500
+O3PipeView:dispatch:80500
+O3PipeView:issue:80500
+O3PipeView:complete:81000
+O3PipeView:retire:82000:store:0
+O3PipeView:fetch:83000:0x00010578:0:16:auipc gp, 134
+O3PipeView:decode:83500
+O3PipeView:rename:84000
+O3PipeView:dispatch:85000
+O3PipeView:issue:85000
+O3PipeView:complete:85500
+O3PipeView:retire:86500:store:0
+O3PipeView:fetch:83000:0x0001057c:0:17:addi gp, gp, -1240
+O3PipeView:decode:83500
+O3PipeView:rename:84000
+O3PipeView:dispatch:85000
+O3PipeView:issue:85500
+O3PipeView:complete:86000
+O3PipeView:retire:87000:store:0
+O3PipeView:fetch:132000:0x0001057c:0:32:addi gp, gp, -1240
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:132000:0x00010578:0:31:auipc gp, 134
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:132000:0x00010574:0:30:jal zero, 244
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:132000:0x00010570:0:29:ebreak
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:130500:0x00010580:0:18:jalr zero, 0(ra)
+O3PipeView:decode:131000
+O3PipeView:rename:131500
+O3PipeView:dispatch:132500
+O3PipeView:issue:132500
+O3PipeView:complete:133000
+O3PipeView:retire:134000:store:0
+O3PipeView:fetch:131500:0x0001054c:0:20:auipc a0, 0
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:135000:store:0
+O3PipeView:fetch:131500:0x00010548:0:19:addi a5, a0, 0
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:135000:store:0
+O3PipeView:fetch:131500:0x00010550:0:21:addi a0, a0, 40
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:134000
+O3PipeView:complete:134500
+O3PipeView:retire:135500:store:0
+O3PipeView:fetch:131500:0x00010558:0:23:addi a2, sp, 8
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:131500:0x0001055c:0:24:andi sp, sp, 18446744073709551600
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:131500:0x00010560:0:25:addi a3, zero, 0
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:131500:0x00010564:0:26:addi a4, zero, 0
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:132000:0x00010568:0:27:addi a6, sp, 0
+O3PipeView:decode:132500
+O3PipeView:rename:133000
+O3PipeView:dispatch:134000
+O3PipeView:issue:134000
+O3PipeView:complete:134500
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:132000:0x0001056c:0:28:jal ra, 548
+O3PipeView:decode:132500
+O3PipeView:rename:133000
+O3PipeView:dispatch:134000
+O3PipeView:issue:134000
+O3PipeView:complete:134500
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:185000:0x00010794:0:34:addi sp, sp, -112
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:187000
+O3PipeView:complete:187500
+O3PipeView:retire:201500:store:0
+O3PipeView:fetch:131500:0x00010554:0:22:ld a1, 0(sp)
+O3PipeView:decode:132000
+O3PipeView:rename:132500
+O3PipeView:dispatch:133500
+O3PipeView:issue:133500
+O3PipeView:complete:134000
+O3PipeView:retire:201000:store:0
+O3PipeView:fetch:185000:0x00010790:0:33:addi a4, a1, 1
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:200000
+O3PipeView:complete:200500
+O3PipeView:retire:201500:store:0
+O3PipeView:fetch:185000:0x00010798:0:35:slli a4, a4, 3
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:200500
+O3PipeView:complete:201000
+O3PipeView:retire:202000:store:0
+O3PipeView:fetch:185000:0x0001079c:0:36:sd s2, 80(sp)
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:187500
+O3PipeView:complete:188000
+O3PipeView:retire:202000:store:204000
+O3PipeView:fetch:185000:0x000107a0:0:37:sd s3, 72(sp)
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:187500
+O3PipeView:complete:188000
+O3PipeView:retire:202000:store:204001
+O3PipeView:fetch:185000:0x000107a4:0:38:sd s4, 64(sp)
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:187500
+O3PipeView:complete:188000
+O3PipeView:retire:202000:store:204002
+O3PipeView:fetch:237000:0x000107dc:0:52:addi s3, a2, 0
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:237000:0x000107d8:0:51:addi s2, a1, 0
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:237000:0x000107d4:0:50:addi s5, a5, 0
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:237000:0x000107cc:0:48:auipc s4, 138
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:240500:store:0
+O3PipeView:fetch:237000:0x000107c8:0:47:add a4, a2, a4
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:240500:store:0
+O3PipeView:fetch:237500:0x000107e4:0:54:auipc a5, 131
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:239500
+O3PipeView:complete:240000
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:237500:0x000107e0:0:53:addi s6, a0, 0
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:239500
+O3PipeView:complete:240000
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:237000:0x000107d0:0:49:addi s4, s4, -452
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239500
+O3PipeView:complete:240000
+O3PipeView:retire:241000:store:0
+O3PipeView:fetch:185000:0x000107a8:0:39:sd s5, 56(sp)
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:187500
+O3PipeView:complete:188000
+O3PipeView:retire:202000:store:254000
+O3PipeView:fetch:185500:0x000107b0:0:41:sd ra, 104(sp)
+O3PipeView:decode:186000
+O3PipeView:rename:186500
+O3PipeView:dispatch:187500
+O3PipeView:issue:188000
+O3PipeView:complete:188500
+O3PipeView:retire:202000:store:204003
+O3PipeView:fetch:185500:0x000107b4:0:42:sd s0, 96(sp)
+O3PipeView:decode:186000
+O3PipeView:rename:186500
+O3PipeView:dispatch:187500
+O3PipeView:issue:188000
+O3PipeView:complete:188500
+O3PipeView:retire:202000:store:204004
+O3PipeView:fetch:185500:0x000107b8:0:43:sd s1, 88(sp)
+O3PipeView:decode:186000
+O3PipeView:rename:186500
+O3PipeView:dispatch:187500
+O3PipeView:issue:188000
+O3PipeView:complete:188500
+O3PipeView:retire:202500:store:204500
+O3PipeView:fetch:185000:0x000107ac:0:40:sd s6, 48(sp)
+O3PipeView:decode:185500
+O3PipeView:rename:186000
+O3PipeView:dispatch:187000
+O3PipeView:issue:188000
+O3PipeView:complete:188500
+O3PipeView:retire:202000:store:258000
+O3PipeView:fetch:185500:0x000107bc:0:44:sd s7, 40(sp)
+O3PipeView:decode:186000
+O3PipeView:rename:186500
+O3PipeView:dispatch:187500
+O3PipeView:issue:188500
+O3PipeView:complete:189000
+O3PipeView:retire:202500:store:258001
+O3PipeView:fetch:237000:0x000107c0:0:45:sd s8, 32(sp)
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:240500:store:258002
+O3PipeView:fetch:237000:0x000107c4:0:46:sd s9, 24(sp)
+O3PipeView:decode:237500
+O3PipeView:rename:238000
+O3PipeView:dispatch:239000
+O3PipeView:issue:239000
+O3PipeView:complete:239500
+O3PipeView:retire:240500:store:258003
+O3PipeView:fetch:289000:0x0001081c:0:68:jal ra, -664
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x00010818:0:67:jal ra, 68280
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x00010814:0:66:ld s7, 1192(s7)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x00010810:0:65:auipc s7, 131
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x0001080c:0:64:ld s0, 1304(s0)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x00010808:0:63:auipc s0, 131
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289000:0x00010804:0:62:ld a0, 0(s4)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x0001083c:0:76:addi a2, zero, 0
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010838:0:75:ld a0, 0(s9)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010834:0:74:ld a5, 16(s0)
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010830:0:73:jal zero, 40
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x0001082c:0:72:addi s9, s9, -456
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010828:0:71:auipc s9, 138
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010824:0:70:addi s8, zero, 58
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:289500:0x00010820:0:69:bgeu s0, s7, 80
+O3PipeView:decode:0
+O3PipeView:rename:0
+O3PipeView:dispatch:0
+O3PipeView:issue:0
+O3PipeView:complete:0
+O3PipeView:retire:0:store:0
+O3PipeView:fetch:237500:0x000107f4:0:58:addi a4, a4, 8
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:239500
+O3PipeView:complete:240000
+O3PipeView:retire:295000:store:0
+O3PipeView:fetch:237500:0x000107fc:0:60:addi a0, a4, 0
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:240000
+O3PipeView:complete:240500
+O3PipeView:retire:295500:store:0
+O3PipeView:fetch:289000:0x00010800:0:61:jal ra, 69996
+O3PipeView:decode:289500
+O3PipeView:rename:290000
+O3PipeView:dispatch:291000
+O3PipeView:issue:291000
+O3PipeView:complete:291500
+O3PipeView:retire:295500:store:0
+O3PipeView:fetch:237500:0x000107f0:0:57:ld a3, 0(a4)
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:239500
+O3PipeView:complete:240000
+O3PipeView:retire:295000:store:0
+O3PipeView:fetch:237500:0x000107f8:0:59:bne a3, zero, -8
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:294000
+O3PipeView:complete:294500
+O3PipeView:retire:295500:store:0
+O3PipeView:fetch:237500:0x000107e8:0:55:sd a6, -108(a5)
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:240000
+O3PipeView:complete:240500
+O3PipeView:retire:241500:store:308000
+O3PipeView:fetch:237500:0x000107ec:0:56:sd a4, 0(s4)
+O3PipeView:decode:238000
+O3PipeView:rename:238500
+O3PipeView:dispatch:239500
+O3PipeView:issue:240000
+O3PipeView:complete:240500
+O3PipeView:retire:241500:store:313000
