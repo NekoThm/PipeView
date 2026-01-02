@@ -27,6 +27,7 @@ DPRINTFR(O3PipeView, "O3PipeView:cache:%llu:%s:%#x:%#x:%s:%s\n",
 
 ```sh
 build/RISCV/gem5.opt --debug-flags=O3PipeView --debug-file=trace_pipe.out configs/deprecated/example/se.py --cmd=tests/test-progs/hello/bin/riscv/linux/hello --cpu-type=DerivO3CPU --caches
+# or use demo traces in tests/
 
 pip install -r requirements.txt
 python app.py
