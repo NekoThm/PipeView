@@ -1,8 +1,9 @@
+<start_of_user_uploaded_file: index.html>
 <!DOCTYPE html>
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>Gem5 Pro Viewer</title>
+    <title>Gem5 Pro Viewer (Flex/O3)</title>
     <style>
         :root {
             --bg-color: #1e1e1e;
@@ -58,7 +59,6 @@
         .input-group { display: flex; align-items: center; gap: 5px; font-size: 12px; }
         .input-group label { color: #aaa; }
         
-        /* 统一样式输入框 */
         input[type="number"] { 
             background: #3c3c3c; 
             border: 1px solid #555; 
@@ -83,7 +83,6 @@
         }
         canvas { display: block; width: 100%; height: 100%; }
 
-        /* Tooltip */
         #tooltip {
             position: fixed; display: none;
             background: #2d2d30; border: 1px solid #454545;
@@ -101,16 +100,15 @@
 <body>
 
     <div class="toolbar">
-        <span class="brand">GEM5 VIEWER</span>
+        <span class="brand">FLEX/O3 VIEWER</span>
         
         <label class="btn btn-primary">
-            Select File
+            Select Trace
             <input type="file" id="fileInput" accept=".out,.txt">
         </label>
         
         <div class="separator"></div>
 
-        <!-- 新增：范围输入 -->
         <div class="input-group" title="Load specific tick range">
             <label>Range:</label>
             <input type="number" id="startTick" class="range-input" placeholder="Start" value="0">
@@ -142,15 +140,22 @@
         headerWidth: 350   
     };
 
+    // [修改] 适配 FlexCPU (F, D, Ex) 和 O3CPU (F, Dc, Rn...)
+    // 我们定义一个包含所有可能阶段的列表，按逻辑顺序排列
     const STAGE_CONFIG = [
         { name: 'fetch',    short: 'F',  color: '#569cd6' },
         { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
+        
+        // O3 Stages (Flex Traces中不会出现这些，不影响)
         { name: 'rename',   short: 'Rn', color: '#6a9955' },
         { name: 'dispatch', short: 'Ds', color: '#c586c0' },
         { name: 'issue',    short: 'Is', color: '#ce9178' },
+        
+        // Flex Stage (新增 Execute)
+        { name: 'execute',  short: 'Ex', color: '#d16969' }, 
+        
         { name: 'complete', short: 'Cm', color: '#4fc1ff' },
         { name: 'retire',   short: 'Rt', color: '#dcdcaa' },
-        // 新增 Store 阶段 (紫色)
         { name: 'store',    short: 'St', color: '#9cdcfe' } 
     ];
 
@@ -183,24 +188,14 @@
     }
     window.addEventListener('resize', resizeCanvas);
 
-    // --- 交互逻辑 ---
     wrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
-        
-        // 移除 Ctrl 缩放，只保留滚轮滚动
-        /*
-        if (e.ctrlKey) {
-             // ...
-        }
-        */
-
         if (e.shiftKey) {
             viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaY);
         } else {
             viewState.scrollY = Math.max(0, viewState.scrollY + e.deltaY);
             viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaX);
         }
-        
         requestAnimationFrame(draw);
         updateTooltip(e.clientX, e.clientY);
     }, { passive: false });
@@ -269,7 +264,6 @@
             const inst = traceData[rowIndex];
             tooltip.style.display = 'block';
             
-            // 调整 Tooltip 位置
             let tipX = mouseX + 15;
             let tipY = mouseY + 15;
             if (tipX + 220 > window.innerWidth) tipX = mouseX - 230;
@@ -286,23 +280,16 @@
                 if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
             });
 
-            // --- 新增：Cache Miss 详情显示 ---
             if (inst.cache_events && inst.cache_events.length > 0) {
                  content += `<hr style="border:0; border-top:1px dashed #666; margin:6px 0;">`;
                  content += `<div style="color:#ff6b6b; font-weight:bold; margin-bottom:4px;">⚠ Cache Miss:</div>`;
                  inst.cache_events.forEach(e => {
                      content += `<div style="font-size:11px; border-left:2px solid #ff4d4d; padding-left:4px; margin-bottom:2px">`;
                      content += `<span style="color:#aaa">${e.type}</span> <span style="color:#4fc1ff">@${e.tick}</span><br>`;
-                     
-                     // [修改] 这里改为使用 e.vaddr
                      content += `<span style="color:#ddd">VA:${e.vaddr}</span>`; 
-                     // 如果想同时显示 PA，可以保留下面这行：
-                     // content += ` <span style="color:#666">(${e.paddr})</span>`;
-                     
                      content += `</div>`;
                  });
             }
-            // ------------------------------------
 
             if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold; border-top:1px solid #444; padding-top:2px">⚠ FLUSHED</div>`;
             tooltip.innerHTML = content;
@@ -311,7 +298,6 @@
         }
     }
 
-    // --- 数据加载 (核心更新) ---
     async function loadData() {
         const fileInput = document.getElementById('fileInput');
         if (!fileInput.files[0]) return alert("Please select a file first.");
@@ -321,13 +307,12 @@
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
-        // 传递范围参数
         formData.append('start_tick', startTick);
         if(endTick) formData.append('end_tick', endTick);
 
         document.getElementById('status').innerText = "Streaming & Parsing...";
-        traceData = []; // 清空现有数据
-        draw(); // 清空画布
+        traceData = []; 
+        draw(); 
 
         try {
             const res = await fetch('/upload', { method: 'POST', body: formData });
@@ -338,7 +323,6 @@
             minTick = json.min_tick;
             
             document.getElementById('status').innerText = `${traceData.length} Insts Loaded (Tick ${minTick}+)`;
-            
             viewState.scrollX = 0;
             viewState.scrollY = 0;
             viewState.scaleX = CONFIG.defaultScaleX;
@@ -372,7 +356,6 @@
         ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
         ctx.textBaseline = "middle";
 
-        // 1. 绘制流水线图表区
         ctx.save();
         ctx.beginPath();
         ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height);
@@ -387,21 +370,32 @@
             if (inst.is_flushed) ctx.globalAlpha = 0.4;
             else ctx.globalAlpha = 1.0;
 
-            // 绘制流水线阶段
             for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
                 const curr = STAGE_CONFIG[s];
-                const next = STAGE_CONFIG[s+1];
                 const t1 = inst.stages[curr.name];
-                let t2 = inst.stages[next.name];
-                let widthVal = 0;
                 
+                // 寻找下一个存在的阶段
+                let nextIdx = s + 1;
+                let t2 = null;
+                while(nextIdx < STAGE_CONFIG.length) {
+                    const nextName = STAGE_CONFIG[nextIdx].name;
+                    if (inst.stages[nextName]) {
+                        t2 = inst.stages[nextName];
+                        break;
+                    }
+                    nextIdx++;
+                }
+
+                let widthVal = 0;
                 if (t1) {
                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
-                    else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
+                    else if (!t2) widthVal = Math.max(10, ticksPerCycle * viewState.scaleX); 
                     
+                    // [Fix] 确保单周期指令也能看到一小条
+                    if (widthVal < 1 && t2) widthVal = 2; 
+
                     if (widthVal > 0) {
                         const x = (t1 - minTick) * viewState.scaleX;
-                        // 简单的视口剔除
                         if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX - viewState.headerWidth) {
                              ctx.fillStyle = curr.color;
                              ctx.fillRect(x, y + 3, widthVal, viewState.rowHeight - 6);
@@ -410,31 +404,24 @@
                 }
             }
 
-            // --- 新增：绘制 Cache Miss 标记 (红色圆点) ---
             if (inst.cache_events && inst.cache_events.length > 0) {
-                ctx.globalAlpha = 1.0; // 标记不透明
-                ctx.fillStyle = "#ff4d4d"; // 鲜艳的红色
-                
+                ctx.globalAlpha = 1.0;
+                ctx.fillStyle = "#ff4d4d"; 
                 inst.cache_events.forEach(e => {
                     const x = (e.tick - minTick) * viewState.scaleX;
-                    // 视口剔除
                     if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
                         ctx.beginPath();
-                        ctx.arc(x, yCenter, 4, 0, Math.PI * 2); // 半径为4的圆点
+                        ctx.arc(x, yCenter, 4, 0, Math.PI * 2);
                         ctx.fill();
-                        
-                        // 可选：绘制一个小的外圈让它更明显
                         ctx.strokeStyle = "#fff";
                         ctx.lineWidth = 1;
                         ctx.stroke();
                     }
                 });
             }
-            // ----------------------------------------------
         }
         ctx.globalAlpha = 1.0;
 
-        // 绘制周期竖线 (保持不变)
         const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
         if (pixelsPerCycle > 5) {
             ctx.lineWidth = 1;
@@ -452,7 +439,6 @@
             ctx.stroke();
         }
 
-        // 绘制阶段文字 (保持不变)
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(255,255,255,0.9)";
         for (let i = startRow; i < endRow; i++) {
@@ -460,13 +446,24 @@
             const y = i * viewState.rowHeight;
             for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
                 const curr = STAGE_CONFIG[s];
-                const next = STAGE_CONFIG[s+1];
                 const t1 = inst.stages[curr.name];
-                let t2 = inst.stages[next.name];
+                
+                // 再次寻找下一个存在的阶段以计算文字位置
+                let nextIdx = s + 1;
+                let t2 = null;
+                while(nextIdx < STAGE_CONFIG.length) {
+                    if (inst.stages[STAGE_CONFIG[nextIdx].name]) {
+                        t2 = inst.stages[STAGE_CONFIG[nextIdx].name];
+                        break;
+                    }
+                    nextIdx++;
+                }
+
                 let widthVal = 0;
                 if (t1) {
                      if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
-                     else if (!t2) widthVal = Math.max(20, ticksPerCycle * viewState.scaleX); 
+                     else if (!t2) widthVal = Math.max(10, ticksPerCycle * viewState.scaleX); 
+                     
                      if (widthVal > 24) { 
                         const x = (t1 - minTick) * viewState.scaleX;
                         if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX) {
@@ -478,7 +475,6 @@
         }
         ctx.restore();
 
-        // 2. 绘制左侧头部 (保持不变)
         ctx.save();
         ctx.translate(0, -viewState.scrollY);
         for (let i = startRow; i < endRow; i++) {
@@ -488,9 +484,8 @@
             ctx.fillStyle = (i % 2 === 0) ? "#252526" : "#1e1e1e";
             ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
             
-            // 如果有 miss，高亮指令ID背景
             if (inst.cache_events && inst.cache_events.length > 0) {
-                 ctx.fillStyle = "rgba(255, 77, 77, 0.1)"; // 淡淡的红色背景
+                 ctx.fillStyle = "rgba(255, 77, 77, 0.1)"; 
                  ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
             }
 
@@ -498,7 +493,7 @@
             ctx.beginPath(); ctx.moveTo(0, y + viewState.rowHeight); ctx.lineTo(viewState.headerWidth, y + viewState.rowHeight); ctx.stroke();
             
             ctx.textAlign = "right";
-            ctx.fillStyle = (inst.cache_events && inst.cache_events.length > 0) ? "#ff9999" : "#555"; // Miss 指令 ID 变红
+            ctx.fillStyle = (inst.cache_events && inst.cache_events.length > 0) ? "#ff9999" : "#555"; 
             ctx.fillText(inst.id, 45, yCenter);
             
             ctx.textAlign = "left";
@@ -515,7 +510,6 @@
         }
         ctx.restore(); 
         
-        // 分割线
         ctx.beginPath();
         ctx.moveTo(viewState.headerWidth, 0);
         ctx.lineTo(viewState.headerWidth, height);
@@ -526,3 +520,4 @@
 </script>
 </body>
 </html>
+<end_of_user_uploaded_file: index.html>
