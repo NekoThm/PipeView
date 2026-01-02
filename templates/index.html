@@ -1,4 +1,3 @@
-<start_of_user_uploaded_file: index.html>
 <!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -80,6 +79,8 @@
             overflow: hidden; 
             background-color: var(--bg-color);
             cursor: default;
+            /* 确保 wrapper 自身有明确的尺寸行为 */
+            min-height: 0; 
         }
         canvas { display: block; width: 100%; height: 100%; }
 
@@ -140,20 +141,13 @@
         headerWidth: 350   
     };
 
-    // [修改] 适配 FlexCPU (F, D, Ex) 和 O3CPU (F, Dc, Rn...)
-    // 我们定义一个包含所有可能阶段的列表，按逻辑顺序排列
     const STAGE_CONFIG = [
         { name: 'fetch',    short: 'F',  color: '#569cd6' },
         { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
-        
-        // O3 Stages (Flex Traces中不会出现这些，不影响)
         { name: 'rename',   short: 'Rn', color: '#6a9955' },
         { name: 'dispatch', short: 'Ds', color: '#c586c0' },
         { name: 'issue',    short: 'Is', color: '#ce9178' },
-        
-        // Flex Stage (新增 Execute)
         { name: 'execute',  short: 'Ex', color: '#d16969' }, 
-        
         { name: 'complete', short: 'Cm', color: '#4fc1ff' },
         { name: 'retire',   short: 'Rt', color: '#dcdcaa' },
         { name: 'store',    short: 'St', color: '#9cdcfe' } 
@@ -167,7 +161,8 @@
         scrollY: 0,
         scaleX: CONFIG.defaultScaleX,
         rowHeight: CONFIG.rowHeight,
-        headerWidth: CONFIG.headerWidth
+        headerWidth: CONFIG.headerWidth,
+        dpr: 1
     };
 
     const canvas = document.getElementById('mainCanvas');
@@ -176,18 +171,35 @@
     const tooltip = document.getElementById('tooltip');
     const cycleTicksInput = document.getElementById('cycleTicks');
 
+    // [关键修复] 使用 ResizeObserver 替代 window.resize
+    // 这能确保无论何时 wrapper 尺寸改变（包括布局变动、侧边栏等），canvas 都会正确重绘
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
+        viewState.dpr = dpr;
+        
         const rect = wrapper.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+
+        // 设置 Canvas 的物理分辨率
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
+        
+        // 设置 Canvas 的 CSS 尺寸
         canvas.style.width = `${rect.width}px`;
         canvas.style.height = `${rect.height}px`;
+        
+        // 调整绘图上下文的缩放，使得绘图操作使用 CSS 像素坐标
         ctx.scale(dpr, dpr);
+        
         draw();
     }
-    window.addEventListener('resize', resizeCanvas);
 
+    const resizeObserver = new ResizeObserver(() => {
+        resizeCanvas();
+    });
+    resizeObserver.observe(wrapper);
+
+    // --- 交互逻辑 ---
     wrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (e.shiftKey) {
@@ -335,16 +347,18 @@
     }
 
     function draw() {
+        // [关键修复] 获取精确的逻辑宽度和高度
+        // 不再依赖 offsetWidth/offsetHeight，而是使用 canvas 实际缓冲区大小除以 dpr
+        // 这样可以避免浏览器缩放或 DPI 变化导致的尺寸不一致
+        const width = canvas.width / viewState.dpr;
+        const height = canvas.height / viewState.dpr;
+
         if (!traceData.length) {
-            const width = canvas.offsetWidth;
-            const height = canvas.offsetHeight;
             ctx.fillStyle = "#1e1e1e";
             ctx.fillRect(0, 0, width, height);
             return;
         }
         
-        const width = canvas.offsetWidth;
-        const height = canvas.offsetHeight;
         const ticksPerCycle = parseInt(cycleTicksInput.value) || 500;
 
         ctx.fillStyle = "#1e1e1e";
@@ -374,7 +388,6 @@
                 const curr = STAGE_CONFIG[s];
                 const t1 = inst.stages[curr.name];
                 
-                // 寻找下一个存在的阶段
                 let nextIdx = s + 1;
                 let t2 = null;
                 while(nextIdx < STAGE_CONFIG.length) {
@@ -390,8 +403,6 @@
                 if (t1) {
                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
                     else if (!t2) widthVal = Math.max(10, ticksPerCycle * viewState.scaleX); 
-                    
-                    // [Fix] 确保单周期指令也能看到一小条
                     if (widthVal < 1 && t2) widthVal = 2; 
 
                     if (widthVal > 0) {
@@ -448,7 +459,6 @@
                 const curr = STAGE_CONFIG[s];
                 const t1 = inst.stages[curr.name];
                 
-                // 再次寻找下一个存在的阶段以计算文字位置
                 let nextIdx = s + 1;
                 let t2 = null;
                 while(nextIdx < STAGE_CONFIG.length) {
@@ -520,4 +530,3 @@
 </script>
 </body>
 </html>
-<end_of_user_uploaded_file: index.html>
