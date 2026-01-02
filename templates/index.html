@@ -79,7 +79,6 @@
             overflow: hidden; 
             background-color: var(--bg-color);
             cursor: default;
-            /* 确保 wrapper 自身有明确的尺寸行为 */
             min-height: 0; 
         }
         canvas { display: block; width: 100%; height: 100%; }
@@ -110,7 +109,7 @@
         
         <div class="separator"></div>
 
-        <div class="input-group" title="Load specific tick range">
+        <div class="input-group">
             <label>Range:</label>
             <input type="number" id="startTick" class="range-input" placeholder="Start" value="0">
             <span>-</span>
@@ -121,7 +120,7 @@
 
         <div class="separator"></div>
 
-        <div class="input-group" title="Gem5 Ticks per Cycle">
+        <div class="input-group">
             <label>Ticks/Cycle:</label>
             <input type="number" id="cycleTicks" class="tick-input" value="500" step="100">
         </div>
@@ -135,13 +134,8 @@
     </div>
 
 <script>
-    const CONFIG = {
-        defaultScaleX: 0.05,
-        rowHeight: 28,     
-        headerWidth: 350   
-    };
-
-    const STAGE_CONFIG = [
+    // --- 1. 配置区域 (Stage Configurations) ---
+    const O3_STAGES = [
         { name: 'fetch',    short: 'F',  color: '#569cd6' },
         { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
         { name: 'rename',   short: 'Rn', color: '#6a9955' },
@@ -153,9 +147,24 @@
         { name: 'store',    short: 'St', color: '#9cdcfe' } 
     ];
 
+    const FLEX_STAGES = [
+        { name: 'fetch',    short: 'F',  color: '#569cd6' },
+        { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
+        { name: 'execute',  short: 'Ex', color: '#d16969' }, 
+        { name: 'retire',   short: 'Rt', color: '#dcdcaa' }
+    ];
+
+    const CONFIG = {
+        defaultScaleX: 0.05,
+        rowHeight: 28,     
+        headerWidth: 350   
+    };
+
+    // --- 2. 全局状态 ---
     let traceData = [];
     let minTick = 0;
-    
+    let currentCpuType = 'O3'; 
+
     let viewState = {
         scrollX: 0,
         scrollY: 0,
@@ -171,327 +180,34 @@
     const tooltip = document.getElementById('tooltip');
     const cycleTicksInput = document.getElementById('cycleTicks');
 
-    // [关键修复] 使用 ResizeObserver 替代 window.resize
-    // 这能确保无论何时 wrapper 尺寸改变（包括布局变动、侧边栏等），canvas 都会正确重绘
-    function resizeCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        viewState.dpr = dpr;
-        
-        const rect = wrapper.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-
-        // 设置 Canvas 的物理分辨率
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        
-        // 设置 Canvas 的 CSS 尺寸
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
-        
-        // 调整绘图上下文的缩放，使得绘图操作使用 CSS 像素坐标
-        ctx.scale(dpr, dpr);
-        
-        draw();
-    }
-
-    const resizeObserver = new ResizeObserver(() => {
-        resizeCanvas();
-    });
-    resizeObserver.observe(wrapper);
-
-    // --- 交互逻辑 ---
-    wrapper.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        if (e.shiftKey) {
-            viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaY);
-        } else {
-            viewState.scrollY = Math.max(0, viewState.scrollY + e.deltaY);
-            viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaX);
-        }
-        requestAnimationFrame(draw);
-        updateTooltip(e.clientX, e.clientY);
-    }, { passive: false });
-
-    let isDragging = false;
-    let lastMouse = { x: 0, y: 0 };
-
-    wrapper.addEventListener('mousedown', (e) => {
-        const rect = wrapper.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        if (x < viewState.headerWidth) {
-            const clickedRow = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
-            if (clickedRow >= 0 && clickedRow < traceData.length) jumpToInstruction(clickedRow);
-        } else {
-            isDragging = true;
-            lastMouse = { x: e.clientX, y: e.clientY };
-            wrapper.style.cursor = 'grabbing';
-            tooltip.style.display = 'none';
-        }
-    });
-
-    function jumpToInstruction(index) {
-        const inst = traceData[index];
-        const startTick = inst.stages.fetch || 0;
-        const targetScrollX = (startTick - minTick) * viewState.scaleX;
-        viewState.scrollX = Math.max(0, targetScrollX - 20);
-        requestAnimationFrame(draw);
-    }
-
-    wrapper.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const dx = e.clientX - lastMouse.x;
-            const dy = e.clientY - lastMouse.y;
-            lastMouse = { x: e.clientX, y: e.clientY };
-            viewState.scrollX = Math.max(0, viewState.scrollX - dx);
-            viewState.scrollY = Math.max(0, viewState.scrollY - dy);
-            requestAnimationFrame(draw);
-            return;
-        }
-        updateTooltip(e.clientX, e.clientY);
-    });
-
-    window.addEventListener('mouseup', () => { isDragging = false; wrapper.style.cursor = 'default'; });
-    cycleTicksInput.addEventListener('input', () => requestAnimationFrame(draw));
-
-    function updateTooltip(mouseX, mouseY) {
-        if (!traceData.length || isDragging) {
-            tooltip.style.display = 'none';
-            return;
-        }
-        const rect = wrapper.getBoundingClientRect();
-        const canvasX = mouseX - rect.left;
-        
-        if (canvasX > viewState.headerWidth) {
-            tooltip.style.display = 'none';
-            return;
-        }
-
-        const canvasY = mouseY - rect.top;
-        const totalY = canvasY + viewState.scrollY;
-        const rowIndex = Math.floor(totalY / viewState.rowHeight);
-
-        if (rowIndex >= 0 && rowIndex < traceData.length) {
-            const inst = traceData[rowIndex];
-            tooltip.style.display = 'block';
-            
-            let tipX = mouseX + 15;
-            let tipY = mouseY + 15;
-            if (tipX + 220 > window.innerWidth) tipX = mouseX - 230;
-            if (tipY + 200 > window.innerHeight) tipY = mouseY - 210;
-            tooltip.style.left = `${tipX}px`;
-            tooltip.style.top = `${tipY}px`;
-
-            let content = `<h4>[${inst.id}] Instruction</h4>`;
-            content += `<div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
-            content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div>`;
-            content += `<hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
-            
-            STAGE_CONFIG.forEach(s => {
-                if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
-            });
-
-            if (inst.cache_events && inst.cache_events.length > 0) {
-                 content += `<hr style="border:0; border-top:1px dashed #666; margin:6px 0;">`;
-                 content += `<div style="color:#ff6b6b; font-weight:bold; margin-bottom:4px;">⚠ Cache Miss:</div>`;
-                 inst.cache_events.forEach(e => {
-                     content += `<div style="font-size:11px; border-left:2px solid #ff4d4d; padding-left:4px; margin-bottom:2px">`;
-                     content += `<span style="color:#aaa">${e.type}</span> <span style="color:#4fc1ff">@${e.tick}</span><br>`;
-                     content += `<span style="color:#ddd">VA:${e.vaddr}</span>`; 
-                     content += `</div>`;
-                 });
-            }
-
-            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold; border-top:1px solid #444; padding-top:2px">⚠ FLUSHED</div>`;
-            tooltip.innerHTML = content;
-        } else {
-            tooltip.style.display = 'none';
-        }
-    }
-
-    async function loadData() {
-        const fileInput = document.getElementById('fileInput');
-        if (!fileInput.files[0]) return alert("Please select a file first.");
-
-        const startTick = document.getElementById('startTick').value;
-        const endTick = document.getElementById('endTick').value;
-
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-        formData.append('start_tick', startTick);
-        if(endTick) formData.append('end_tick', endTick);
-
-        document.getElementById('status').innerText = "Streaming & Parsing...";
-        traceData = []; 
-        draw(); 
-
-        try {
-            const res = await fetch('/upload', { method: 'POST', body: formData });
-            const json = await res.json();
-            if (json.error) throw new Error(json.error);
-
-            traceData = json.instructions;
-            minTick = json.min_tick;
-            
-            document.getElementById('status').innerText = `${traceData.length} Insts Loaded (Tick ${minTick}+)`;
-            viewState.scrollX = 0;
-            viewState.scrollY = 0;
-            viewState.scaleX = CONFIG.defaultScaleX;
-            resizeCanvas();
-        } catch (e) {
-            console.error(e);
-            alert("Error: " + e.message);
-            document.getElementById('status').innerText = "Error";
-        }
-    }
-
-    function draw() {
-        // [关键修复] 获取精确的逻辑宽度和高度
-        // 不再依赖 offsetWidth/offsetHeight，而是使用 canvas 实际缓冲区大小除以 dpr
-        // 这样可以避免浏览器缩放或 DPI 变化导致的尺寸不一致
-        const width = canvas.width / viewState.dpr;
-        const height = canvas.height / viewState.dpr;
-
-        if (!traceData.length) {
+    // --- 3. 通用渲染器 (Common Renderer) ---
+    const CommonRenderer = {
+        clearAndBackground: function(ctx, width, height) {
             ctx.fillStyle = "#1e1e1e";
             ctx.fillRect(0, 0, width, height);
-            return;
-        }
+        },
         
-        const ticksPerCycle = parseInt(cycleTicksInput.value) || 500;
-
-        ctx.fillStyle = "#1e1e1e";
-        ctx.fillRect(0, 0, width, height);
-
-        const startRow = Math.floor(viewState.scrollY / viewState.rowHeight);
-        const endRow = Math.min(traceData.length, Math.ceil((viewState.scrollY + height) / viewState.rowHeight));
-
-        ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
-        ctx.textBaseline = "middle";
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height);
-        ctx.clip();
-        ctx.translate(-viewState.scrollX + viewState.headerWidth, -viewState.scrollY);
-
-        for (let i = startRow; i < endRow; i++) {
-            const inst = traceData[i];
-            const y = i * viewState.rowHeight;
-            const yCenter = y + viewState.rowHeight / 2;
-
-            if (inst.is_flushed) ctx.globalAlpha = 0.4;
-            else ctx.globalAlpha = 1.0;
-
-            for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
-                const curr = STAGE_CONFIG[s];
-                const t1 = inst.stages[curr.name];
-                
-                let nextIdx = s + 1;
-                let t2 = null;
-                while(nextIdx < STAGE_CONFIG.length) {
-                    const nextName = STAGE_CONFIG[nextIdx].name;
-                    if (inst.stages[nextName]) {
-                        t2 = inst.stages[nextName];
-                        break;
-                    }
-                    nextIdx++;
+        drawGrid: function(ctx, width, height, ticksPerCycle) {
+            const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
+            if (pixelsPerCycle > 5) {
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; 
+                const visibleStartTick = (viewState.scrollX) / viewState.scaleX; 
+                const visibleEndTick = (viewState.scrollX + width - viewState.headerWidth) / viewState.scaleX;
+                const startCycleIdx = Math.floor(visibleStartTick / ticksPerCycle);
+                const endCycleIdx = Math.ceil(visibleEndTick / ticksPerCycle);
+                ctx.beginPath();
+                for (let c = startCycleIdx; c <= endCycleIdx; c++) {
+                    const x = (c * ticksPerCycle) * viewState.scaleX;
+                    ctx.moveTo(x, viewState.scrollY);
+                    ctx.lineTo(x, viewState.scrollY + height);
                 }
-
-                let widthVal = 0;
-                if (t1) {
-                    if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
-                    else if (!t2) widthVal = Math.max(10, ticksPerCycle * viewState.scaleX); 
-                    if (widthVal < 1 && t2) widthVal = 2; 
-
-                    if (widthVal > 0) {
-                        const x = (t1 - minTick) * viewState.scaleX;
-                        if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX - viewState.headerWidth) {
-                             ctx.fillStyle = curr.color;
-                             ctx.fillRect(x, y + 3, widthVal, viewState.rowHeight - 6);
-                        }
-                    }
-                }
+                ctx.stroke();
             }
+        },
 
-            if (inst.cache_events && inst.cache_events.length > 0) {
-                ctx.globalAlpha = 1.0;
-                ctx.fillStyle = "#ff4d4d"; 
-                inst.cache_events.forEach(e => {
-                    const x = (e.tick - minTick) * viewState.scaleX;
-                    if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
-                        ctx.beginPath();
-                        ctx.arc(x, yCenter, 4, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.strokeStyle = "#fff";
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-                    }
-                });
-            }
-        }
-        ctx.globalAlpha = 1.0;
-
-        const pixelsPerCycle = ticksPerCycle * viewState.scaleX;
-        if (pixelsPerCycle > 5) {
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; 
-            const visibleStartTick = (viewState.scrollX) / viewState.scaleX; 
-            const visibleEndTick = (viewState.scrollX + width - viewState.headerWidth) / viewState.scaleX;
-            const startCycleIdx = Math.floor(visibleStartTick / ticksPerCycle);
-            const endCycleIdx = Math.ceil(visibleEndTick / ticksPerCycle);
-            ctx.beginPath();
-            for (let c = startCycleIdx; c <= endCycleIdx; c++) {
-                const x = (c * ticksPerCycle) * viewState.scaleX;
-                ctx.moveTo(x, viewState.scrollY);
-                ctx.lineTo(x, viewState.scrollY + height);
-            }
-            ctx.stroke();
-        }
-
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        for (let i = startRow; i < endRow; i++) {
-            const inst = traceData[i];
-            const y = i * viewState.rowHeight;
-            for (let s = 0; s < STAGE_CONFIG.length - 1; s++) {
-                const curr = STAGE_CONFIG[s];
-                const t1 = inst.stages[curr.name];
-                
-                let nextIdx = s + 1;
-                let t2 = null;
-                while(nextIdx < STAGE_CONFIG.length) {
-                    if (inst.stages[STAGE_CONFIG[nextIdx].name]) {
-                        t2 = inst.stages[STAGE_CONFIG[nextIdx].name];
-                        break;
-                    }
-                    nextIdx++;
-                }
-
-                let widthVal = 0;
-                if (t1) {
-                     if (t2 && t2 >= t1) widthVal = (t2 - t1) * viewState.scaleX;
-                     else if (!t2) widthVal = Math.max(10, ticksPerCycle * viewState.scaleX); 
-                     
-                     if (widthVal > 24) { 
-                        const x = (t1 - minTick) * viewState.scaleX;
-                        if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX) {
-                            ctx.fillText(curr.short, x + widthVal/2, y + viewState.rowHeight/2 + 1);
-                        }
-                     }
-                }
-            }
-        }
-        ctx.restore();
-
-        ctx.save();
-        ctx.translate(0, -viewState.scrollY);
-        for (let i = startRow; i < endRow; i++) {
-            const inst = traceData[i];
-            const y = i * viewState.rowHeight;
-            const yCenter = y + viewState.rowHeight / 2;
-            ctx.fillStyle = (i % 2 === 0) ? "#252526" : "#1e1e1e";
+        drawSidebar: function(ctx, inst, y, yCenter) {
+            ctx.fillStyle = (Math.floor(y / viewState.rowHeight) % 2 === 0) ? "#252526" : "#1e1e1e";
             ctx.fillRect(0, y, viewState.headerWidth, viewState.rowHeight);
             
             if (inst.cache_events && inst.cache_events.length > 0) {
@@ -507,25 +223,190 @@
             ctx.fillText(inst.id, 45, yCenter);
             
             ctx.textAlign = "left";
-            if (inst.is_flushed) {
-                ctx.fillStyle = "#666";
-                ctx.font = "italic 12px Consolas";
-            } else {
-                ctx.fillStyle = "#ccc";
-                ctx.font = "12px Consolas";
-            }
+            ctx.font = inst.is_flushed ? "italic 12px Consolas" : "12px Consolas";
+            ctx.fillStyle = inst.is_flushed ? "#666" : "#ccc";
             let text = inst.disasm;
             if(text.length > 38) text = text.substring(0, 36) + "...";
             ctx.fillText(text, 60, yCenter);
+        },
+
+        drawCacheEvents: function(ctx, inst, yCenter, width) {
+            if (inst.cache_events && inst.cache_events.length > 0) {
+                ctx.fillStyle = "#ff4d4d"; 
+                inst.cache_events.forEach(e => {
+                    const x = (e.tick - minTick) * viewState.scaleX;
+                    if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
+                        ctx.beginPath(); ctx.arc(x, yCenter, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
+                    }
+                });
+            }
+        },
+
+        drawGenericPipeline: function(ctx, inst, y, width, ticksPerCycle, stageConfig) {
+            ctx.globalAlpha = inst.is_flushed ? 0.4 : 1.0;
+            for (let s = 0; s < stageConfig.length - 1; s++) {
+                const curr = stageConfig[s];
+                const t1 = inst.stages[curr.name];
+                let nextIdx = s + 1, t2 = null;
+                while(nextIdx < stageConfig.length) {
+                    if (inst.stages[stageConfig[nextIdx].name]) { t2 = inst.stages[stageConfig[nextIdx].name]; break; }
+                    nextIdx++;
+                }
+                if (t1) {
+                    let widthVal = t2 && t2 >= t1 ? (t2 - t1) * viewState.scaleX : Math.max(10, ticksPerCycle * viewState.scaleX);
+                    const x = (t1 - minTick) * viewState.scaleX;
+                    if (x < viewState.scrollX + width && x + widthVal > viewState.scrollX - viewState.headerWidth) {
+                         ctx.fillStyle = curr.color;
+                         ctx.fillRect(x, y + 3, widthVal, viewState.rowHeight - 6);
+                         if (widthVal > 24) {
+                            ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.textAlign = "center";
+                            ctx.fillText(curr.short, x + widthVal/2, y + viewState.rowHeight/2 + 1);
+                         }
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+    };
+
+    // --- 4. 专用渲染器 ---
+    const O3Renderer = {
+        drawPipeline: function(ctx, inst, y, yCenter, width, ticksPerCycle) {
+            CommonRenderer.drawGenericPipeline(ctx, inst, y, width, ticksPerCycle, O3_STAGES);
+        }
+    };
+
+    const FlexRenderer = {
+        drawPipeline: function(ctx, inst, y, yCenter, width, ticksPerCycle) {
+            CommonRenderer.drawGenericPipeline(ctx, inst, y, width, ticksPerCycle, FLEX_STAGES);
+        }
+    };
+
+    // --- 5. 主逻辑 ---
+    function draw() {
+        const width = canvas.width / viewState.dpr;
+        const height = canvas.height / viewState.dpr;
+        if (!traceData.length) { CommonRenderer.clearAndBackground(ctx, width, height); return; }
+        
+        const ticksPerCycle = parseInt(cycleTicksInput.value) || 500;
+        CommonRenderer.clearAndBackground(ctx, width, height);
+
+        const startRow = Math.floor(viewState.scrollY / viewState.rowHeight);
+        const endRow = Math.min(traceData.length, Math.ceil((viewState.scrollY + height) / viewState.rowHeight));
+
+        ctx.font = "12px 'Segoe UI', Consolas, sans-serif";
+        ctx.textBaseline = "middle";
+
+        ctx.save();
+        ctx.beginPath(); ctx.rect(viewState.headerWidth, 0, width - viewState.headerWidth, height); ctx.clip();
+        ctx.translate(-viewState.scrollX + viewState.headerWidth, -viewState.scrollY);
+
+        for (let i = startRow; i < endRow; i++) {
+            const inst = traceData[i], y = i * viewState.rowHeight, yCenter = y + viewState.rowHeight / 2;
+            if (currentCpuType === 'Flex') FlexRenderer.drawPipeline(ctx, inst, y, yCenter, width, ticksPerCycle);
+            else O3Renderer.drawPipeline(ctx, inst, y, yCenter, width, ticksPerCycle);
+            CommonRenderer.drawCacheEvents(ctx, inst, yCenter, width);
+        }
+        CommonRenderer.drawGrid(ctx, width, height, ticksPerCycle);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(0, -viewState.scrollY);
+        for (let i = startRow; i < endRow; i++) {
+            const inst = traceData[i], y = i * viewState.rowHeight;
+            CommonRenderer.drawSidebar(ctx, inst, y, y + viewState.rowHeight / 2);
         }
         ctx.restore(); 
         
-        ctx.beginPath();
-        ctx.moveTo(viewState.headerWidth, 0);
-        ctx.lineTo(viewState.headerWidth, height);
-        ctx.strokeStyle = "#444";
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(viewState.headerWidth, 0); ctx.lineTo(viewState.headerWidth, height);
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    // --- 6. 交互与数据加载 ---
+    function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        viewState.dpr = dpr;
+        const rect = wrapper.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+        canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
+        ctx.scale(dpr, dpr); draw();
+    }
+    const resizeObserver = new ResizeObserver(() => resizeCanvas());
+    resizeObserver.observe(wrapper);
+
+    wrapper.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.shiftKey) viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaY);
+        else { viewState.scrollY = Math.max(0, viewState.scrollY + e.deltaY); viewState.scrollX = Math.max(0, viewState.scrollX + e.deltaX); }
+        requestAnimationFrame(draw); updateTooltip(e.clientX, e.clientY);
+    }, { passive: false });
+
+    let isDragging = false, lastMouse = { x: 0, y: 0 };
+    wrapper.addEventListener('mousedown', (e) => {
+        const rect = wrapper.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
+        if (x < viewState.headerWidth) {
+            const row = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
+            if (row >= 0 && row < traceData.length) {
+                const startTick = traceData[row].stages.fetch || 0;
+                viewState.scrollX = Math.max(0, (startTick - minTick) * viewState.scaleX - 20);
+                requestAnimationFrame(draw);
+            }
+        } else { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; wrapper.style.cursor = 'grabbing'; tooltip.style.display = 'none'; }
+    });
+    wrapper.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            viewState.scrollX = Math.max(0, viewState.scrollX - (e.clientX - lastMouse.x));
+            viewState.scrollY = Math.max(0, viewState.scrollY - (e.clientY - lastMouse.y));
+            lastMouse = { x: e.clientX, y: e.clientY }; requestAnimationFrame(draw);
+        } else updateTooltip(e.clientX, e.clientY);
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; wrapper.style.cursor = 'default'; });
+    cycleTicksInput.addEventListener('input', () => requestAnimationFrame(draw));
+
+    function updateTooltip(mouseX, mouseY) {
+        const rect = wrapper.getBoundingClientRect(), x = mouseX - rect.left, y = mouseY - rect.top;
+        if (!traceData.length || isDragging || x > viewState.headerWidth) { tooltip.style.display = 'none'; return; }
+        const row = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
+        if (row >= 0 && row < traceData.length) {
+            const inst = traceData[row]; tooltip.style.display = 'block';
+            let tx = mouseX + 15, ty = mouseY + 15;
+            if (tx + 220 > window.innerWidth) tx = mouseX - 230;
+            if (ty + 200 > window.innerHeight) ty = mouseY - 210;
+            tooltip.style.left = `${tx}px`; tooltip.style.top = `${ty}px`;
+
+            let content = `<h4>[${inst.id}] Instruction</h4><div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
+            content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div><hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
+            (currentCpuType === 'Flex' ? FLEX_STAGES : O3_STAGES).forEach(s => {
+                if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
+            });
+            if (inst.cache_events?.length > 0) {
+                 content += `<hr style="border:0; border-top:1px dashed #666; margin:6px 0;"><div style="color:#ff6b6b; font-weight:bold;">⚠ Cache Miss:</div>`;
+                 inst.cache_events.forEach(e => content += `<div style="font-size:11px; border-left:2px solid #ff4d4d; padding-left:4px;">${e.type} @${e.tick}<br>VA:${e.vaddr}</div>`);
+            }
+            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold; border-top:1px solid #444;">⚠ FLUSHED</div>`;
+            tooltip.innerHTML = content;
+        } else tooltip.style.display = 'none';
+    }
+
+    async function loadData() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files[0]) return alert("Please select a file first.");
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('start_tick', document.getElementById('startTick').value);
+        if(document.getElementById('endTick').value) formData.append('end_tick', document.getElementById('endTick').value);
+
+        document.getElementById('status').innerText = "Loading...";
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+            traceData = json.instructions; minTick = json.min_tick; currentCpuType = json.cpu_type || 'O3';
+            document.getElementById('status').innerText = `${traceData.length} Insts (${currentCpuType})`;
+            viewState.scrollX = 0; viewState.scrollY = 0; resizeCanvas();
+        } catch (e) { alert("Error: " + e.message); document.getElementById('status').innerText = "Error"; }
     }
 </script>
 </body>
