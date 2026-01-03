@@ -98,6 +98,8 @@ def parse_flex_pipeview_stream(file_storage, user_start_tick, user_end_tick):
     inst_map = {}
     fetch_queue = collections.deque() 
     last_if_pc = None
+    last_id_sn = None
+    last_ex_sn = None
     
     LOOKBACK_MARGIN = 50000
     parse_start_tick = max(0, user_start_tick - LOOKBACK_MARGIN)
@@ -109,8 +111,8 @@ def parse_flex_pipeview_stream(file_storage, user_start_tick, user_end_tick):
         except: continue
         
         if not line.startswith("PIPE_TRACE"): continue
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) < 7: continue
+        parts = [p.strip() for p in line.split(';')]
+        if len(parts) < 7: continue # 必须包含 Status 列
         
         try: tick = int(parts[1])
         except: continue
@@ -118,72 +120,104 @@ def parse_flex_pipeview_stream(file_storage, user_start_tick, user_end_tick):
         if user_end_tick > 0 and tick > user_end_tick + 1000: break
         if tick < parse_start_tick: continue
         
-        stage = parts[2]
-        try: pc_val = int(parts[4], 16)
+        stage_key = parts[2]   # IF, ID, EX
+        sn = int(parts[3]) if parts[3].isdigit() else 0
+        pc_hex = parts[4]
+        try: pc_val = int(pc_hex, 16)
         except: pc_val = 0
+        disasm = parts[5].strip('"')
+        status = parts[6]      # FETCHED, STALLED, WAITING_MEM, etc.
 
-        if stage == 'IF':
+        if stage_key == 'IF':
             if pc_val != 0:
-                if pc_val != last_if_pc:
-                    fetch_queue.append({'tick': tick, 'pc': pc_val})
+                if pc_val == last_if_pc and fetch_queue:
+                    fetch_queue[-1]['states'].append({'tick': tick, 'status': status})
+                else:
+                    # 新的 Fetch 序列
+                    fetch_queue.append({'pc': pc_val, 'states': [{'tick': tick, 'status': status}]})
                     last_if_pc = pc_val
             else:
-                last_if_pc = 0 
+                last_if_pc = 0
+                if status == 'STALLED' and fetch_queue:
+                    fetch_queue[-1]['states'].append({'tick': tick, 'status': status})
 
-        elif stage == 'ID':
-            try: sn = int(parts[3])
-            except: sn = 0
+        elif stage_key == 'ID':
             if sn != 0:
+                last_id_sn = sn
                 if sn not in inst_map:
                     inst = {
-                        "id": sn, "pc": parts[4], "disasm": parts[5].strip('"'),
-                        "stages": { "decode": tick },
-                        "is_flushed": False, "cache_events": []
+                        "id": sn, "pc": pc_hex, "disasm": disasm,
+                        "stages": { "fetch": [],
+                                    "decode": [{"tick": tick, "status": status}],
+                                    "execute": [] },
                     }
                     inst_map[sn] = inst
+                    # 尝试从 fetch_queue 找对应的 IF 阶段
                     match_idx = -1
                     for i, f in enumerate(fetch_queue):
                         if f['pc'] == pc_val:
                             match_idx = i
                             break
                     if match_idx != -1:
-                        inst['stages']['fetch'] = fetch_queue[match_idx]['tick']
+                        f_data = fetch_queue[match_idx]
+                        inst['stages']['fetch'] = f_data['states']
                         for _ in range(match_idx + 1): fetch_queue.popleft()
                     else:
-                        inst['stages']['fetch'] = tick
+                        inst['stages']['fetch'] = [{"tick": tick, "status": "UNKNOWN_IF"}]
+                else:
+                    inst_map[sn]['stages']['decode'].append({"tick": tick, "status": status})
+            else:
+                # 修复：处理 sn=0 的情况
+                if status == 'STALLED' and last_id_sn is not None and last_id_sn in inst_map:
+                    # 将 STALLED 状态追加到上一条指令的 decode 阶段
+                    inst_map[last_id_sn]['stages']['decode'].append({"tick": tick, "status": status})
+                elif status == 'BUBBLE':
+                    # 气泡意味着阶段清空，没有指令驻留
+                    last_id_sn = None
 
-        elif stage == 'EX':
-            try: sn = int(parts[3])
-            except: sn = 0
+        elif stage_key == 'EX':
             if sn != 0:
+                last_ex_sn = sn
                 if sn not in inst_map:
-                    inst = {
-                        "id": sn, "pc": parts[4], "disasm": parts[5].strip('"'),
-                        "stages": { "fetch": tick, "decode": tick, "execute": tick },
-                        "is_flushed": False, "cache_events": []
+                    # 容错：如果 ID 没抓到
+                    inst_map[sn] = {
+                        "id": sn, "pc": pc_hex, "disasm": disasm,
+                        "stages": { "fetch": [{"tick": tick, "status": "FIXED"}], 
+                                    "decode": [{"tick": tick, "status": "FIXED"}],
+                                    "execute": [] },
                     }
-                    inst_map[sn] = inst
+                
                 inst = inst_map[sn]
-                if 'execute' not in inst['stages']: inst['stages']['execute'] = tick
-                inst['stages']['retire'] = tick
+                inst['stages']['execute'].append({"tick": tick, "status": status})
+            else:
+                # 修复：处理 sn=0 的情况
+                if status == 'STALLED' and last_ex_sn is not None and last_ex_sn in inst_map:
+                    inst_map[last_ex_sn]['stages']['execute'].append({"tick": tick, "status": status})
+                    # 如果 EX 停顿，retire 时间也顺延
+                    inst_map[last_ex_sn]['stages']['retire'] = [{"tick": tick, "status": "RETIRE"}]
+                elif status == 'BUBBLE':
+                    last_ex_sn = None
+                
 
-    final_list = []
+    # 过滤并排序
     raw_list = list(inst_map.values())
     raw_list.sort(key=lambda x: x['id'])
-
+    final_list = []
     for inst in raw_list:
         max_stage_tick = 0
-        if inst['stages']:
-            max_stage_tick = max(inst['stages'].values())
+        for s_val in inst['stages'].values():
+            if isinstance(s_val, list) and s_val:
+                 max_stage_tick = max(max_stage_tick, s_val[-1]['tick'])
         if max_stage_tick >= user_start_tick:
             final_list.append(inst)
 
     final_min = user_start_tick
     if final_list:
-        all_fetch_ticks = [i['stages'].get('fetch', float('inf')) for i in final_list]
-        if all_fetch_ticks:
-            actual_min = min(all_fetch_ticks)
-            final_min = actual_min
+        all_fetch = []
+        for i in final_list:
+             if 'fetch' in i['stages'] and i['stages']['fetch']:
+                 all_fetch.append(i['stages']['fetch'][0]['tick'])
+        if all_fetch: final_min = min(all_fetch)
 
     return { "min_tick": final_min, "instructions": final_list, "count": len(final_list) }
 

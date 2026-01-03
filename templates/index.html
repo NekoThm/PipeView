@@ -89,12 +89,13 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             padding: 8px 12px; border-radius: 4px;
             font-size: 12px; color: #eee; z-index: 1000;
-            pointer-events: none; min-width: 200px;
+            pointer-events: none; min-width: 220px;
         }
         #tooltip h4 { margin: 0 0 6px 0; color: #fff; border-bottom: 1px solid #444; padding-bottom: 4px; }
-        #tooltip .row { display: flex; justify-content: space-between; }
-        #tooltip .key { color: #888; }
+        #tooltip .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        #tooltip .key { color: #888; margin-right: 10px; }
         #tooltip .val { font-family: 'Consolas', monospace; color: #4fc1ff; }
+        #tooltip .status-tag { color: #ffca28; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -134,7 +135,6 @@
     </div>
 
 <script>
-    // --- 1. 配置区域 (Stage Configurations) ---
     const O3_STAGES = [
         { name: 'fetch',    short: 'F',  color: '#569cd6' },
         { name: 'decode',   short: 'Dc', color: '#4ec9b0' },
@@ -160,7 +160,6 @@
         headerWidth: 350   
     };
 
-    // --- 2. 全局状态 ---
     let traceData = [];
     let minTick = 0;
     let currentCpuType = 'O3'; 
@@ -180,7 +179,6 @@
     const tooltip = document.getElementById('tooltip');
     const cycleTicksInput = document.getElementById('cycleTicks');
 
-    // --- 3. 通用渲染器 (Common Renderer) ---
     const CommonRenderer = {
         clearAndBackground: function(ctx, width, height) {
             ctx.fillStyle = "#1e1e1e";
@@ -229,21 +227,11 @@
             if(text.length > 38) text = text.substring(0, 36) + "...";
             ctx.fillText(text, 60, yCenter);
         },
+    };
 
-        drawCacheEvents: function(ctx, inst, yCenter, width) {
-            if (inst.cache_events && inst.cache_events.length > 0) {
-                ctx.fillStyle = "#ff4d4d"; 
-                inst.cache_events.forEach(e => {
-                    const x = (e.tick - minTick) * viewState.scaleX;
-                    if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
-                        ctx.beginPath(); ctx.arc(x, yCenter, 4, 0, Math.PI * 2); ctx.fill();
-                        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
-                    }
-                });
-            }
-        },
-
-        drawGenericPipeline: function(ctx, inst, y, width, ticksPerCycle, stageConfig) {
+    const O3Renderer = {
+        drawO3Pipeline: function(ctx, inst, y, width, ticksPerCycle) {
+            const stageConfig = O3_STAGES;
             ctx.globalAlpha = inst.is_flushed ? 0.4 : 1.0;
             for (let s = 0; s < stageConfig.length - 1; s++) {
                 const curr = stageConfig[s];
@@ -267,23 +255,53 @@
                 }
             }
             ctx.globalAlpha = 1.0;
-        }
-    };
+        },
 
-    // --- 4. 专用渲染器 ---
-    const O3Renderer = {
-        drawPipeline: function(ctx, inst, y, yCenter, width, ticksPerCycle) {
-            CommonRenderer.drawGenericPipeline(ctx, inst, y, width, ticksPerCycle, O3_STAGES);
+        drawCacheEvents: function(ctx, inst, yCenter, width) {
+            if (inst.cache_events && inst.cache_events.length > 0) {
+                ctx.fillStyle = "#ff4d4d"; 
+                inst.cache_events.forEach(e => {
+                    const x = (e.tick - minTick) * viewState.scaleX;
+                    if (x > viewState.scrollX - 20 && x < viewState.scrollX + width) {
+                        ctx.beginPath(); ctx.arc(x, yCenter, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
+                    }
+                });
+            }
         }
     };
 
     const FlexRenderer = {
-        drawPipeline: function(ctx, inst, y, yCenter, width, ticksPerCycle) {
-            CommonRenderer.drawGenericPipeline(ctx, inst, y, width, ticksPerCycle, FLEX_STAGES);
+        drawFlexPipeline: function(ctx, inst, y, width, ticksPerCycle) {
+            const stageConfig = FLEX_STAGES;
+            ctx.globalAlpha = inst.is_flushed ? 0.4 : 1.0;
+            for (let s = 0; s < stageConfig.length; s++) {
+                const curr = stageConfig[s];
+                const stageData = inst.stages[curr.name];
+                
+                // Flex 模式：stageData 是对象列表 [{tick, status}, ...]
+                if (stageData && Array.isArray(stageData) && stageData.length > 0) {
+                    const tStart = stageData[0].tick;
+                    const tEnd = stageData[stageData.length - 1].tick;
+                    
+                    // 绘制宽度：从第一帧到最后一帧，外加一个周期（作为最后一帧的持续时间）
+                    const drawWidth = (tEnd - tStart) * viewState.scaleX + (ticksPerCycle * viewState.scaleX);
+                    const x = (tStart - minTick) * viewState.scaleX;
+                    
+                    if (x < viewState.scrollX + width && x + drawWidth > viewState.scrollX - viewState.headerWidth) {
+                         ctx.fillStyle = curr.color;
+                         ctx.fillRect(x, y + 3, drawWidth, viewState.rowHeight - 6);
+                         if (drawWidth > 24) {
+                            ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.textAlign = "center";
+                            ctx.fillText(curr.short, x + drawWidth/2, y + viewState.rowHeight/2 + 1);
+                         }
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
         }
     };
 
-    // --- 5. 主逻辑 ---
     function draw() {
         const width = canvas.width / viewState.dpr;
         const height = canvas.height / viewState.dpr;
@@ -304,9 +322,11 @@
 
         for (let i = startRow; i < endRow; i++) {
             const inst = traceData[i], y = i * viewState.rowHeight, yCenter = y + viewState.rowHeight / 2;
-            if (currentCpuType === 'Flex') FlexRenderer.drawPipeline(ctx, inst, y, yCenter, width, ticksPerCycle);
-            else O3Renderer.drawPipeline(ctx, inst, y, yCenter, width, ticksPerCycle);
-            CommonRenderer.drawCacheEvents(ctx, inst, yCenter, width);
+            if (currentCpuType === 'Flex') FlexRenderer.drawFlexPipeline(ctx, inst, y, width, ticksPerCycle);
+            else {
+                O3Renderer.drawO3Pipeline(ctx, inst, y, width, ticksPerCycle);
+                O3Renderer.drawCacheEvents(ctx, inst, yCenter, width);
+            }
         }
         CommonRenderer.drawGrid(ctx, width, height, ticksPerCycle);
         ctx.restore();
@@ -323,7 +343,6 @@
         ctx.strokeStyle = "#444"; ctx.lineWidth = 2; ctx.stroke();
     }
 
-    // --- 6. 交互与数据加载 ---
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
         viewState.dpr = dpr;
@@ -349,8 +368,13 @@
         if (x < viewState.headerWidth) {
             const row = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
             if (row >= 0 && row < traceData.length) {
-                const startTick = traceData[row].stages.fetch || 0;
-                viewState.scrollX = Math.max(0, (startTick - minTick) * viewState.scaleX - 20);
+                const fetchStage = traceData[row].stages.fetch;
+                let startTickVal = 0;
+                // 兼容：Flex 是数组，O3 是数字
+                if (Array.isArray(fetchStage) && fetchStage.length > 0) startTickVal = fetchStage[0].tick;
+                else if (fetchStage && typeof fetchStage === 'number') startTickVal = fetchStage;
+                
+                viewState.scrollX = Math.max(0, (startTickVal - minTick) * viewState.scaleX - 20);
                 requestAnimationFrame(draw);
             }
         } else { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; wrapper.style.cursor = 'grabbing'; tooltip.style.display = 'none'; }
@@ -367,27 +391,104 @@
 
     function updateTooltip(mouseX, mouseY) {
         const rect = wrapper.getBoundingClientRect(), x = mouseX - rect.left, y = mouseY - rect.top;
-        if (!traceData.length || isDragging || x > viewState.headerWidth) { tooltip.style.display = 'none'; return; }
+        if (!traceData.length || isDragging) { tooltip.style.display = 'none'; return; }
+        
         const row = Math.floor((y + viewState.scrollY) / viewState.rowHeight);
-        if (row >= 0 && row < traceData.length) {
-            const inst = traceData[row]; tooltip.style.display = 'block';
-            let tx = mouseX + 15, ty = mouseY + 15;
-            if (tx + 220 > window.innerWidth) tx = mouseX - 230;
-            if (ty + 200 > window.innerHeight) ty = mouseY - 210;
-            tooltip.style.left = `${tx}px`; tooltip.style.top = `${ty}px`;
+        if (row < 0 || row >= traceData.length) { tooltip.style.display = 'none'; return; }
+        
+        const inst = traceData[row];
+        const ticksPerCycle = parseInt(cycleTicksInput.value) || 500;
+        
+        tooltip.style.display = 'block';
+        let tx = mouseX + 15, ty = mouseY + 15;
+        if (tx + 220 > window.innerWidth) tx = mouseX - 230;
+        if (ty + 200 > window.innerHeight) ty = mouseY - 210;
+        tooltip.style.left = `${tx}px`; tooltip.style.top = `${ty}px`;
 
+        if (x < viewState.headerWidth) {
+            // --- 侧边栏 Hover ---
             let content = `<h4>[${inst.id}] Instruction</h4><div class="row"><span class="key">PC:</span> <span class="val">${inst.pc}</span></div>`;
             content += `<div class="row"><span class="key">Asm:</span> <span class="val" style="color:#fff">${inst.disasm}</span></div><hr style="border:0; border-top:1px solid #444; margin:4px 0;">`;
-            (currentCpuType === 'Flex' ? FLEX_STAGES : O3_STAGES).forEach(s => {
-                if (inst.stages[s.name]) content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${inst.stages[s.name]}</span></div>`;
+            const stagesDef = (currentCpuType === 'Flex' ? FLEX_STAGES : O3_STAGES);
+            stagesDef.forEach(s => {
+                const sData = inst.stages[s.name];
+                if (sData) {
+                    let disp = "";
+                    if (Array.isArray(sData)) disp = sData[0].tick;
+                    else disp = (typeof sData === 'object' && sData.tick) ? sData.tick : sData;
+                    content += `<div class="row"><span class="key">${s.name}:</span> <span class="val">${disp}</span></div>`;
+                }
             });
             if (inst.cache_events?.length > 0) {
                  content += `<hr style="border:0; border-top:1px dashed #666; margin:6px 0;"><div style="color:#ff6b6b; font-weight:bold;">⚠ Cache Miss:</div>`;
                  inst.cache_events.forEach(e => content += `<div style="font-size:11px; border-left:2px solid #ff4d4d; padding-left:4px;">${e.type} @${e.tick}<br>VA:${e.vaddr}</div>`);
             }
-            if (inst.is_flushed) content += `<div style="color:#ff6b6b; margin-top:5px; font-weight:bold; border-top:1px solid #444;">⚠ FLUSHED</div>`;
             tooltip.innerHTML = content;
-        } else tooltip.style.display = 'none';
+        } else {
+            // --- 核心：Per-Cycle Status Lookup ---
+            const hoverTick = minTick + (x - viewState.headerWidth + viewState.scrollX) / viewState.scaleX;
+            let currentStageName = null;
+            let currentStageData = null;
+
+            if (currentCpuType === 'Flex') {
+                const stagesDef = FLEX_STAGES;
+                for (let i = 0; i < stagesDef.length; i++) {
+                    const s = stagesDef[i];
+                    const dataList = inst.stages[s.name];
+                    if (!dataList || !Array.isArray(dataList) || dataList.length === 0) continue;
+                    
+                    const tStart = dataList[0].tick;
+                    const tEnd = dataList[dataList.length - 1].tick + ticksPerCycle; 
+                    
+                    if (hoverTick >= tStart && hoverTick < tEnd) {
+                        // 在列表中寻找小于等于 hoverTick 的最新状态
+                        let best = null;
+                        for(let item of dataList) {
+                            if (item.tick <= hoverTick) best = item;
+                            else break; 
+                        }
+                        if (best && (hoverTick - best.tick) < ticksPerCycle * 1.5) {
+                            currentStageName = s.name;
+                            currentStageData = best;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // O3 Legacy Logic
+                const stagesDef = O3_STAGES;
+                for (let i = 0; i < stagesDef.length; i++) {
+                    const s = stagesDef[i];
+                    const tStart = inst.stages[s.name];
+                    if (!tStart) continue;
+                    let tEnd = Infinity;
+                    for (let j = i + 1; j < stagesDef.length; j++) {
+                        const nextData = inst.stages[stagesDef[j].name];
+                        if (nextData) { tEnd = nextData; break; }
+                    }
+                    if (hoverTick >= tStart && hoverTick < tEnd) {
+                        currentStageName = s.name;
+                        currentStageData = tStart;
+                        break;
+                    }
+                }
+            }
+
+            if (currentStageName) {
+                let content = `<h4>Stage: ${currentStageName.toUpperCase()}</h4>`;
+                content += `<div class="row"><span class="key">Inst:</span> <span class="val">${inst.disasm}</span></div>`;
+                if (currentCpuType === 'Flex') {
+                    // 显示状态
+                    content += `<div class="row"><span class="key">Status:</span> <span class="val status-tag">${currentStageData.status}</span></div>`;
+                    content += `<div class="row"><span class="key">Tick:</span> <span class="val">${currentStageData.tick}</span></div>`;
+                } else {
+                    content += `<div class="row"><span class="key">Tick:</span> <span class="val">${currentStageData}</span></div>`;
+                }
+                tooltip.innerHTML = content;
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
     }
 
     async function loadData() {
